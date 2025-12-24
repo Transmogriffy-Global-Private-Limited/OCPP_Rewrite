@@ -1,12 +1,11 @@
 import logging
 from datetime import datetime, timezone
-import uuid
 import asyncio
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as CP
 from ocpp.v16 import call, call_result
 import random
-from peewee import DoesNotExist, fn, IntegrityError
+from peewee import fn, IntegrityError
 from models import Transaction
 from utils.methods import send_charging_session_transaction_data_to_applicaton_layer
 from send_transaction_to_be import add_to_queue
