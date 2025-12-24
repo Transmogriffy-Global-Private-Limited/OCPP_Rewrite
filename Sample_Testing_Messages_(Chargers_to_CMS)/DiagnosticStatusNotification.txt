@@ -1,8 +1,0 @@
-[
-    2,
-    "12351",
-    "DiagnosticsStatusNotification",
-    {
-        "status": "Uploaded"
-    }
-]

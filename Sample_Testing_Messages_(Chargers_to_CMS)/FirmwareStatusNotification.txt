@@ -1,8 +1,0 @@
-[
-    2,
-    "12352",
-    "FirmwareStatusNotification",
-    {
-        "status": "Installed"
-    }
-]
