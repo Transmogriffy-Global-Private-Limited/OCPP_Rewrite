@@ -6,9 +6,7 @@ from ocpp.routing import on
 from ocpp.v16 import ChargePoint as CP
 from ocpp.v16 import call, call_result
 import random
-from peewee import DoesNotExist, fn
-import Chargers_to_CMS_Parser as parser_c2c
-import CMS_to_Charger_Parser as parser_ctc
+from peewee import DoesNotExist, fn, IntegrityError
 from models import Transaction
 from utils.methods import send_charging_session_transaction_data_to_applicaton_layer
 from send_transaction_to_be import add_to_queue
@@ -194,18 +192,8 @@ class ChargePoint(CP):
         # Trust yourself, king 👑
         status = "Accepted"
 
-        parser_c2c.parse_and_store_authorize(
-            self.charger_id, id_tag=id_tag, status=status
-        )
-
+        
         response = call_result.Authorize(id_tag_info={"status": status})
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "Authorize",
-            "Authorize",
-            self.utc_now(),
-            status=status,
-        )
         return response
 
     @on("BootNotification")
@@ -213,17 +201,9 @@ class ChargePoint(CP):
         try:
             logging.debug(f"Received BootNotification with kwargs: {kwargs}")
             self.mark_as_online()
-            parser_c2c.parse_and_store_boot_notification(self.charger_id, **kwargs)
-
+            
             response = call_result.BootNotification(
                 current_time=self.currdatetime(), interval=900, status="Accepted"
-            )
-            parser_ctc.parse_and_store_acknowledgment(
-                self.charger_id,
-                "BootNotification",
-                "BootNotification",
-                self.utc_now(),
-                status="Accepted",
             )
             return response
         finally:
@@ -233,12 +213,9 @@ class ChargePoint(CP):
     async def on_heartbeat(self, **kwargs):
         logging.debug(f"Received Heartbeat with kwargs: {kwargs}")
         self.mark_as_online()
-        parser_c2c.parse_and_store_heartbeat(self.charger_id, **kwargs)
-
+        
         response = call_result.Heartbeat(current_time=self.currdatetime())
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id, "Heartbeat", "Heartbeat", self.utc_now()
-        )
+                
         return response
 
     def generate_unique_transaction_id(self, max_attempts: int = 100) -> int:
@@ -281,8 +258,7 @@ class ChargePoint(CP):
         print(f"Transaction ID assigned: {transaction_id}")
 
         # Store the original request
-        parser_c2c.parse_and_store_start_transaction(self.charger_id, **kwargs)
-
+        
         # Create DB transaction record
         rows = (
             Transaction
@@ -332,16 +308,7 @@ class ChargePoint(CP):
         })
 
         # Log ACK to CMS DB
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "StartTransaction",
-            "StartTransaction",
-            self.utc_now(),
-            connector_id=connector_id,
-            transaction_id=transaction_id,
-            status="Accepted",
-        )
-
+        
         return response
 
 
@@ -394,8 +361,7 @@ class ChargePoint(CP):
                 logging.error(f"[{self.charger_id}] 💀 Error updating transaction record: {e}")
 
         # 📦 Store raw message
-        parser_c2c.parse_and_store_stop_transaction(self.charger_id, **kwargs)
-
+        
         # 🔄 State update
         self.state["status"] = "Inactive"
         self.update_connector_state(
@@ -416,15 +382,6 @@ class ChargePoint(CP):
         response = call_result.StopTransaction(id_tag_info={"status": "Accepted"})
         asyncio.create_task(self.unlock_connector(connector_id))
 
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "StopTransaction",
-            "StopTransaction",
-            self.utc_now(),
-            connector_id=connector_id,
-            transaction_id=transaction_id,
-            status="Accepted",
-        )
         return response
 
     @on("MeterValues")
@@ -435,8 +392,7 @@ class ChargePoint(CP):
         transaction_id = kwargs.get("transaction_id")
         print(f"Transaction ID whose Meter Values I recieved: {transaction_id}")
         meter_values = kwargs.get("meter_value", [])
-        parser_c2c.parse_and_store_meter_values(self.charger_id, **kwargs)
-
+        
         if meter_values:
             last_entry = meter_values[-1]
             sampled_values = last_entry.get("sampled_value", [])
@@ -526,13 +482,6 @@ class ChargePoint(CP):
                 logging.error(f"Limit enforcement failed for TX {transaction_id}: {e}")
 
         response = call_result.MeterValues()
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "MeterValues",
-            "MeterValues",
-            self.utc_now(),
-            connector_id=connector_id,
-        )
         return response
 
 
@@ -544,8 +493,7 @@ class ChargePoint(CP):
         connector_id = kwargs.get("connector_id")
         status = kwargs.get("status")
         transaction_id = kwargs.get("transaction_id")
-        parser_c2c.parse_and_store_status_notification(self.charger_id, **kwargs)
-
+        
         self.update_connector_state(
             connector_id,
             status=status,
@@ -554,43 +502,22 @@ class ChargePoint(CP):
         )
 
         response = call_result.StatusNotification()
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "StatusNotification",
-            "StatusNotification",
-            self.utc_now(),
-            connector_id=connector_id,
-        )
         return response
 
     @on("DiagnosticsStatusNotification")
     async def on_diagnostics_status_notification(self, **kwargs):
         logging.debug(f"Received DiagnosticsStatusNotification with kwargs: {kwargs}")
         self.mark_as_online()
-        parser_c2c.parse_and_store_diagnostics_status(self.charger_id, **kwargs)
-
+        
         response = call_result.DiagnosticsStatusNotification()
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "DiagnosticsStatusNotification",
-            "DiagnosticsStatusNotification",
-            self.utc_now(),
-        )
         return response
 
     @on("FirmwareStatusNotification")
     async def on_firmware_status_notification(self, **kwargs):
         logging.debug(f"Received FirmwareStatusNotification with kwargs: {kwargs}")
         self.mark_as_online()
-        parser_c2c.parse_and_store_firmware_status(self.charger_id, **kwargs)
-
+        
         response = call_result.FirmwareStatusNotification()
-        parser_ctc.parse_and_store_acknowledgment(
-            self.charger_id,
-            "FirmwareStatusNotification",
-            "FirmwareStatusNotification",
-            self.utc_now(),
-        )
         return response
 
     # Outbound messages from CMS to Charger
@@ -612,16 +539,6 @@ class ChargePoint(CP):
         )
         self.update_transaction_id(connector_id, transaction_id)
 
-        parser_ctc.parse_and_store_remote_start_transaction(
-            self.charger_id, id_tag=id_tag, connector_id=connector_id
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "RemoteStartTransaction",
-            "RemoteStartTransaction",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def remote_stop_transaction(self, transaction_id):
@@ -643,16 +560,6 @@ class ChargePoint(CP):
         if connector_id:
             self.update_connector_state(connector_id, transaction_id=None)
 
-        parser_ctc.parse_and_store_remote_stop_transaction(
-            self.charger_id, transaction_id=transaction_id
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "RemoteStopTransaction",
-            "RemoteStopTransaction",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def change_availability(self, connector_id, type):
@@ -668,19 +575,6 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"ChangeAvailability response: {response}")
 
-        parser_ctc.parse_and_store_change_availability(
-            self.charger_id,
-            connector_id=connector_id,
-            type=type,
-            status=response.status,
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "ChangeAvailability",
-            "ChangeAvailability",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def change_configuration(self, key, value):
@@ -694,23 +588,12 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"ChangeConfiguration response: {response}")
 
-        parser_ctc.parse_and_store_change_configuration(
-            self.charger_id, key=key, value=value, status=response.status
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "ChangeConfiguration",
-            "ChangeConfiguration",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def get_configuration(self):
         logging.debug("Sending GetConfiguration:")
         request = call.GetConfiguration()
 
-        parser_ctc.parse_and_store_get_configuration(self.charger_id)
         try:
             response = await self.call(request)
             self.mark_as_online()  # Mark as online when a response is received
@@ -730,10 +613,7 @@ class ChargePoint(CP):
                         f"Readonly: {config.get('readonly')} Type: {type(config.get('readonly'))}"
                     )
 
-            parser_c2c.parse_and_store_get_configuration_response(
-                self.charger_id, response.configuration_key
-            )
-            return response
+                    return response
         except Exception as e:
             logging.error(f"Error in get_configuration: {e}")
             raise
@@ -746,14 +626,6 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"ClearCache response: {response}")
 
-        parser_ctc.parse_and_store_clear_cache(self.charger_id, status=response.status)
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "ClearCache",
-            "ClearCache",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def unlock_connector(self, connector_id):
@@ -766,16 +638,6 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"UnlockConnector response: {response}")
 
-        parser_ctc.parse_and_store_unlock_connector(
-            self.charger_id, connector_id=connector_id, status=response.status
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "UnlockConnector",
-            "UnlockConnector",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def get_diagnostics(
@@ -801,22 +663,6 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"GetDiagnostics response: {response}")
 
-        parser_ctc.parse_and_store_get_diagnostics(
-            self.charger_id,
-            location=location,
-            start_time=start_time,
-            stop_time=stop_time,
-            retries=retries,
-            retry_interval=retry_interval,
-            status=response.status,
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "GetDiagnostics",
-            "GetDiagnostics",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def update_firmware(
@@ -836,21 +682,6 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"UpdateFirmware response: {response}")
 
-        parser_ctc.parse_and_store_update_firmware(
-            self.charger_id,
-            location=location,
-            retrieve_date=retrieve_date,
-            retries=retries,
-            retry_interval=retry_interval,
-            status=response.status,
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "UpdateFirmware",
-            "UpdateFirmware",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def reset(self, type):
@@ -863,23 +694,10 @@ class ChargePoint(CP):
         self.mark_as_online()  # Mark as online when a response is received
         logging.debug(f"Reset response: {response}")
 
-        parser_ctc.parse_and_store_reset(
-            self.charger_id, type=type, status=response.status
-        )
-        parser_c2c.parse_and_store_acknowledgment(
-            self.charger_id,
-            "Reset",
-            "Reset",
-            self.utc_now(),
-            status=response.status,
-        )
         return response
 
     async def trigger_message(self, requested_message):
         request = call.TriggerMessage(requested_message=requested_message)
-        parser_ctc.parse_and_store_trigger_message(
-            self.charger_id, requested_message=requested_message
-        )
         response = await self.call(request)
         return response
 
@@ -890,33 +708,10 @@ class ChargePoint(CP):
             id_tag=id_tag,
             reservation_id=reservation_id,
         )
-        parser_ctc.parse_and_store_reserve_now(
-            self.charger_id,
-            connector_id=connector_id,
-            expiry_date=expiry_date,
-            id_tag=id_tag,
-            reservation_id=reservation_id,
-        )
         response = await self.call(request)
-        parser_c2c.parse_and_store_reserve_now_response(
-            self.charger_id,
-            connector_id=connector_id,
-            expiry_date=expiry_date,
-            id_tag=id_tag,
-            reservation_id=reservation_id,
-            status=response.status,
-        )
         return response
 
     async def cancel_reservation(self, reservation_id):
         request = call.CancelReservation(reservation_id=reservation_id)
-        parser_ctc.parse_and_store_cancel_reservation(
-            self.charger_id, reservation_id=reservation_id
-        )
         response = await self.call(request)
-        parser_c2c.parse_and_store_cancel_reservation_response(
-            self.charger_id,
-            reservation_id=reservation_id,
-            status=response.status,
-        )
         return response
