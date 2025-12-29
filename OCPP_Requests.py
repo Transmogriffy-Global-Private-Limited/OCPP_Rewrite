@@ -699,18 +699,3 @@ class ChargePoint(CP):
         request = call.TriggerMessage(requested_message=requested_message)
         response = await self.call(request)
         return response
-
-    async def reserve_now(self, connector_id, expiry_date, id_tag, reservation_id):
-        request = call.ReserveNow(
-            connector_id=connector_id,
-            expiry_date=expiry_date,
-            id_tag=id_tag,
-            reservation_id=reservation_id,
-        )
-        response = await self.call(request)
-        return response
-
-    async def cancel_reservation(self, reservation_id):
-        request = call.CancelReservation(reservation_id=reservation_id)
-        response = await self.call(request)
-        return response
