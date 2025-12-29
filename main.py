@@ -1455,129 +1455,151 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
         "17fbdfa25e10ec8774ba91b43431b882e9c43873db8b3495bf8805557bad58b706d47e2bb9ef08e90718e716e8a450f6"
     )
 
-    # Fetch the latest charger list from cache/API
+    # Fetch the latest charger data from cache or API
     charger_data = await central_system.get_charger_data()
-    active_chargers = {str(item["uid"]) for item in charger_data}
+
+    # Create a set of active charger IDs from the charger data (API/cache)
+    active_chargers = {f"{item['uid']}" for item in charger_data}
 
     uid = request.uid
 
-    # If requesting a specific charger, ensure it exists in API/cache
-    if uid not in ("all", "all_online"):
+    # Handle specific chargers: enforce presence in API/cache
+    if uid not in ["all", "all_online"]:
         if uid not in active_chargers:
             raise HTTPException(status_code=404, detail="Charger not found in the system")
 
-    def build_connectors_status(charge_point) -> dict:
-        """
-        Converts charge_point.state["connectors"] into the response shape safely.
-        """
-        connectors = (charge_point.state or {}).get("connectors") or {}
-        connectors_status: dict = {}
-
-        for conn_id, conn_state in connectors.items():
-            # conn_state should be a dict; be defensive
-            conn_state = conn_state or {}
-
-            connectors_status[conn_id] = {
-                "status": conn_state.get("status"),
-                "latest_meter_value": conn_state.get("last_meter_value"),
-                "latest_transaction_consumption_kwh": conn_state.get(
-                    "last_transaction_consumption_kwh", 0
-                ),
-                "error_code": conn_state.get("error_code", "NoError"),
-                "latest_transaction_id": conn_state.get("transaction_id"),
-            }
-
-        return connectors_status
-
-    def online_label(charge_point) -> str:
-        if not charge_point.online:
-            return "Offline"
-        return "Online (with error)" if charge_point.has_error else "Online"
-
-    # ---------------------------
-    # all_online: only currently-online chargers that still exist in API/cache
-    # ---------------------------
+    # ---- all_online: only show chargers that are online AND still present in API/cache ----
     if uid == "all_online":
         all_online_statuses = {}
 
         for cp_id, charge_point in central_system.charge_points.items():
-            if (not cp_id) or (cp_id not in active_chargers):
+            if cp_id not in active_chargers:
                 continue
-            if not charge_point.online:
+            if not getattr(charge_point, "online", False):
                 continue
 
+            online_status = "Online (with error)" if charge_point.has_error else "Online"
+
+            connectors = charge_point.state["connectors"]
+            connectors_status = {}
+
+            # ✅ FIX: loop so conn_id/conn_state exist
+            for conn_id, conn_state in connectors.items():
+                connectors_status[conn_id] = {
+                    "status": conn_state["status"],
+                    "latest_meter_value": conn_state.get("last_meter_value"),
+                    "latest_transaction_consumption_kwh": conn_state.get(
+                        "last_transaction_consumption_kwh", 0
+                    ),
+                    "error_code": conn_state.get("error_code", "NoError"),
+                    "latest_transaction_id": conn_state.get("transaction_id"),
+                }
+
             all_online_statuses[cp_id] = {
-                "status": (charge_point.state or {}).get("status"),
-                "connectors": build_connectors_status(charge_point),
-                "online": online_label(charge_point),
-                "latest_message_received_time": (
-                    charge_point.last_message_time.isoformat()
-                    if getattr(charge_point, "last_message_time", None)
-                    else None
-                ),
+                "status": charge_point.state["status"],
+                "connectors": connectors_status,
+                "online": online_status,
+                "latest_message_received_time": charge_point.last_message_time.isoformat(),
             }
 
         return all_online_statuses
 
-    # ---------------------------
-    # all: return every charger present in API/cache (online or offline)
-    # ---------------------------
+    # ---- all: return all chargers (online/offline) present in API/cache ----
     if uid == "all":
         all_statuses = {}
 
         for charger in charger_data:
-            charger_id = str(charger["uid"])
+            charger_id = charger["uid"]
             charge_point = central_system.charge_points.get(charger_id)
 
+            online_status = "Offline"  # default
+            connectors_status = {}
+
             if charge_point:
-                all_statuses[charger_id] = {
-                    "status": (charge_point.state or {}).get("status"),
-                    "connectors": build_connectors_status(charge_point),
-                    "online": online_label(charge_point),
-                    "last_message_received_time": (
-                        charge_point.last_message_time.isoformat()
-                        if getattr(charge_point, "last_message_time", None)
-                        else None
-                    ),
-                }
-            else:
-                # Not currently connected / no runtime state
-                all_statuses[charger_id] = {
-                    "status": "Offline",
-                    "connectors": {},
-                    "online": "Offline",
-                    "last_message_received_time": None,
-                }
+                online_status = (
+                    "Online (with error)"
+                    if charge_point.online and charge_point.has_error
+                    else "Online"
+                )
+
+                connectors = charge_point.state["connectors"]
+
+                # ✅ FIX: loop so conn_id/conn_state exist
+                for conn_id, conn_state in connectors.items():
+                    connectors_status[conn_id] = {
+                        "status": conn_state["status"],
+                        "last_meter_value": conn_state.get("last_meter_value"),
+                        "last_transaction_consumption_kwh": conn_state.get(
+                            "last_transaction_consumption_kwh", 0
+                        ),
+                        "error_code": conn_state.get("error_code", "NoError"),
+                        "transaction_id": conn_state.get("transaction_id"),
+                    }
+
+            # (This branch in your old code is basically redundant, but keeping behavior-safe)
+            elif charger_id in central_system.charge_points:
+                charge_point = central_system.charge_points[charger_id]
+                online_status = "Offline"
+                connectors = charge_point.state["connectors"]
+
+                for conn_id, conn_state in connectors.items():
+                    connectors_status[conn_id] = {
+                        "status": conn_state["status"],
+                        "last_meter_value": conn_state.get("last_meter_value"),
+                        "last_transaction_consumption_kwh": conn_state.get(
+                            "last_transaction_consumption_kwh", 0
+                        ),
+                        "error_code": conn_state.get("error_code", "NoError"),
+                        "transaction_id": conn_state.get("transaction_id"),
+                    }
+
+            all_statuses[charger_id] = {
+                "status": (charge_point.state["status"] if charge_point else "Offline"),
+                "connectors": connectors_status,
+                "online": online_status,
+                "last_message_received_time": (
+                    charge_point.last_message_time.isoformat() if charge_point else None
+                ),
+            }
 
         return all_statuses
 
-    # ---------------------------
-    # specific charger
-    # ---------------------------
-    charge_point = central_system.charge_points.get(uid)
+    # ---- specific charger ----
+    charge_point_id = uid
+    charge_point = central_system.charge_points.get(charge_point_id)
     if not charge_point:
-        # It exists in API/cache but isn't in our runtime map right now -> offline state
-        return {
-            "charger_id": uid,
-            "status": "Offline",
-            "connectors": {},
-            "online": "Offline",
-            "latest_message_received_time": None,
+        raise HTTPException(status_code=404, detail="Charge point not found")
+
+    online_status = (
+        "Online (with error)"
+        if charge_point.online and charge_point.has_error
+        else "Online"
+        if charge_point.online
+        else "Offline"
+    )
+
+    connectors = charge_point.state["connectors"]
+    connectors_status = {}
+
+    # ✅ FIX: loop so conn_id/conn_state exist
+    for conn_id, conn_state in connectors.items():
+        connectors_status[conn_id] = {
+            "status": conn_state["status"],
+            "latest_meter_value": conn_state.get("last_meter_value"),
+            "latest_transaction_consumption_kwh": conn_state.get(
+                "last_transaction_consumption_kwh", 0
+            ),
+            "error_code": conn_state.get("error_code", "NoError"),
+            "latest_transaction_id": conn_state.get("transaction_id"),
         }
 
     return {
-        "charger_id": uid,
-        "status": (charge_point.state or {}).get("status"),
-        "connectors": build_connectors_status(charge_point),
-        "online": online_label(charge_point),
-        "latest_message_received_time": (
-            charge_point.last_message_time.isoformat()
-            if getattr(charge_point, "last_message_time", None)
-            else None
-        ),
+        "charger_id": charge_point_id,
+        "status": charge_point.state["status"],
+        "connectors": connectors_status,
+        "online": online_status,
+        "latest_message_received_time": charge_point.last_message_time.isoformat(),
     }
-
-
 
 # Handle OPTIONS for /api/trigger_message
 @app.options("/api/trigger_message")
