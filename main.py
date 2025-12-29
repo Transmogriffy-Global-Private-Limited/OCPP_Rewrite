@@ -27,9 +27,6 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
 import multiprocessing
-from Chargers_to_CMS_Parser import (
-    parse_and_store_cancel_reservation_response,
-)
 from dbconn import keep_db_alive
 from models import (
     Analytics,
@@ -47,21 +44,6 @@ from models import (
 )
 from OCPP_Requests import (
     ChargePoint,
-)
-from wallet_api_models import (
-    DebitWalletRequest,
-    EditWalletRequest,
-    RechargeWalletRequest,
-    UserIDRequest,
-)
-from wallet_methods import (
-    create_wallet_route,
-    debit_wallet,
-    delete_wallet,
-    edit_wallet,
-    get_wallet_recharge_history,
-    get_wallet_transaction_history,
-    recharge_wallet,
 )
 from fastapi.middleware.gzip import GZipMiddleware
 from send_transaction_to_be import start_worker, shutdown_worker
@@ -575,7 +557,7 @@ class CentralSystem:
         now   = datetime.now(timezone.utc)
         delta = (now - cp.last_message_time).total_seconds()
 
-        if delta < INACTIVITY_LIMIT or not cp.online:
+        if delta < self.INACTIVITY_LIMIT or not cp.online:
             return  # still fine or already offline
 
         # ---- mark offline ----
@@ -620,13 +602,13 @@ class CentralSystem:
                             failure_counts.pop(charger_id, None)
                         except Exception as e:
                             count = failure_counts.get(charger_id, 0)
-                            if count < MAX_FAILURE_RETRIES:
+                            if count < self.MAX_FAILURE_RETRIES:
                                 delay = 2 ** count
                                 logging.warning(f"[Watchdog] {charger_id} check failed: {e}. Retrying in {delay}s...")
                                 failure_counts[charger_id] = count + 1
                                 await asyncio.sleep(delay)
                             else:
-                                logging.error(f"[Watchdog] {charger_id} failed {MAX_FAILURE_RETRIES} times. Skipping this round.")
+                                logging.error(f"[Watchdog] {charger_id} failed {self.MAX_FAILURE_RETRIES} times. Skipping this round.")
                                 failure_counts[charger_id] = 0
 
                     tasks.append(asyncio.create_task(check()))
@@ -639,7 +621,7 @@ class CentralSystem:
             except Exception as e:
                 logging.critical(f"[Watchdog] 💀 Global crash in watchdog: {e}")
 
-            await asyncio.sleep(WATCHDOG_INTERVAL)
+            await asyncio.sleep(self.WATCHDOG_INTERVAL)
 
 
     async def verify_charger_id(self, charge_point_id: str) -> bool:
@@ -709,50 +691,6 @@ class CentralSystem:
                 f"Error sending {request_method} to charge point {charge_point_id}: {e}"
             )
             return {"error": str(e)}
-
-    async def cancel_reservation(self, charge_point_id, reservation_id):
-        try:
-            reservation = Reservation.get(Reservation.reservation_id == reservation_id)
-        except DoesNotExist:
-            logging.info(f"No reservation found with ID {reservation_id}")
-            return {"error": "Reservation not found"}
-
-        response = await self.send_request(
-            charge_point_id=charge_point_id,
-            request_method="cancel_reservation",
-            reservation_id=reservation_id,
-        )
-
-        if response.status == "Accepted":
-            reservation.status = "Cancelled"
-            reservation.save()
-
-            next_reservation = (
-                Reservation.select()
-                .where(
-                    Reservation.charger_id == charge_point_id,
-                    Reservation.status == "Reserved",
-                )
-                .order_by(Reservation.expiry_date.asc())
-                .first()
-            )
-
-            if next_reservation:
-                logging.info(
-                    f"Next reservation for charger {charge_point_id}: {next_reservation.reservation_id}"
-                )
-
-            parse_and_store_cancel_reservation_response(
-                charge_point_id,
-                reservation_id=reservation_id,
-                status="Cancelled",
-            )
-        else:
-            parse_and_store_cancel_reservation_response(
-                charge_point_id, reservation_id=reservation_id, status="Failed"
-            )
-
-        return response
 
     async def fetch_latest_charger_to_cms_message(self, charge_point_id, message_type):
         """
@@ -1625,249 +1563,6 @@ async def trigger_message(request: TriggerMessageRequest, response_obj: Response
     return {"status": status, "latest_message": latest_message}
 
 
-# Handle OPTIONS for /api/reserve_now
-@app.options("/api/reserve_now")
-async def options_reserve_now():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, Access-Control-Allow-Origin",
-        },
-    )
-
-
-@app.post("/api/reserve_now")
-async def reserve_now(request: ReserveNowRequest, response_obj: Response):
-    charge_point_id = request.uid
-
-    response = await central_system.send_request(
-        charge_point_id=charge_point_id,
-        request_method="reserve_now",
-        connector_id=request.connector_id,
-        expiry_date=request.expiry_date,
-        id_tag=request.id_tag,
-        reservation_id=request.reservation_id,
-    )
-    if isinstance((response, dict) and "error" in response):
-        raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "0911a54182106a3ac2f92f1ff1546d79 ||| d1570f4f7f3840421a98d94c5fc5ef3464b3994da6d8f7ffef754fb685a1b3413d4e0a72409578dbff1969cf0cb3a6c4"
-    return {"status": response.status}
-
-
-# Handle OPTIONS for /api/cancel_reservation
-@app.options("/api/cancel_reservation")
-async def options_cancel_reservation():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, Access-Control-Allow-Origin",
-        },
-    )
-
-
-@app.post("/api/cancel_reservation")
-async def cancel_reservation(request: CancelReservationRequest, response_obj: Response):
-    charge_point_id = request.uid
-
-    response = await central_system.cancel_reservation(
-        charge_point_id=charge_point_id, reservation_id=request.reservation_id
-    )
-    if isinstance((response, dict) and "error" in response):
-        raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "ac69a3cfac05203af15f6251d1dd61bb ||| e8ca16481f8115ce69de4d9e1c89a32dae300a3bf11c3d4bc23af465f7b6b70091957ab810d5c30b78aa8698ac7273ab"
-    return {"status": response.status}
-
-
-# Handle OPTIONS for /api/query_charger_to_cms
-@app.options("/api/query_charger_to_cms")
-async def options_query_charger_to_cms():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, Access-Control-Allow-Origin",
-        },
-    )
-
-
-@app.post("/api/query_charger_to_cms")
-async def query_charger_to_cms(request: ChargerToCMSQueryRequest, response_obj: Response):
-    query = ChargerToCMS.select()
-
-    if request.uid:
-        query = query.where(ChargerToCMS.charger_id == request.uid)
-
-    if request.filters:
-        for column, value in request.filters.items():
-            if not ChargerToCMS._meta.fields.get(column):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Column '{column}' not found in Charger_to_CMS table.",
-                )
-            query = query.where(getattr(ChargerToCMS, column) == value)
-
-    if request.start_time:
-        query = query.where(ChargerToCMS.timestamp >= request.start_time)
-    if request.end_time:
-        query = query.where(ChargerToCMS.timestamp <= request.end_time)
-
-    if request.limit:
-        start, end = map(int, request.limit.split("-"))
-        query = query.order_by(ChargerToCMS.id).limit(end - start + 1).offset(start - 1)
-    else:
-        query = query.order_by(ChargerToCMS.id)
-
-    results = [model_to_dict(row) for row in query]
-    response_obj.headers["x-auth-sign"] = "311b77385928c1a3ff0b16b8ffb0736d ||| 8a4dcbd1742ea947d16cbcf39fa7393e3fad84cdffbcf011a9866e4e640328a0dc35ca4dd9f1255358718b6c0108fcd4"
-    return {"data": results}
-
-
-# Handle OPTIONS for /api/query_cms_to_charger
-@app.options("/api/query_cms_to_charger")
-async def options_query_cms_to_charger():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, Access-Control-Allow-Origin",
-        },
-    )
-
-
-@app.post("/api/query_cms_to_charger")
-async def query_cms_to_charger(request: CMSToChargerQueryRequest, response_obj: Response):
-    query = CMSToCharger.select()
-
-    if request.uid:
-        query = query.where(CMSToCharger.charger_id == request.uid)
-
-    if request.filters:
-        for column, value in request.filters.items():
-            if not CMSToCharger._meta.fields.get(column):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Column '{column}' not found in CMS_to_Charger table.",
-                )
-            query = query.where(getattr(CMSToCharger, column) == value)
-
-    if request.start_time:
-        query = query.where(CMSToCharger.timestamp >= request.start_time)
-    if request.end_time:
-        query = query.where(CMSToCharger.timestamp <= request.end_time)
-
-    if request.limit:
-        start, end = map(int, request.limit.split("-"))
-        query = query.order_by(CMSToCharger.id).limit(end - start + 1).offset(start - 1)
-    else:
-        query = query.order_by(CMSToCharger.id)
-
-    results = [model_to_dict(row) for row in query]
-    response_obj.headers["x-auth-sign"] = "b948d4542ad4d2a33b12a079610b0b89 ||| 064eeda5c1903483612c95469fd8b24901bfcbfc796da9f8af0ef1d98924052c1086afbfbeb7081e42adf28a3fa05480"
-    return {"data": results}
-
-
-# Handle OPTIONS for /api/query_transactions
-@app.options("/api/query_transactions")
-async def options_query_transactions():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, Access-Control-Allow-Origin",
-        },
-    )
-
-
-@app.post("/api/query_transactions")
-async def query_transactions(request: ChargerToCMSQueryRequest, response_obj: Response):
-    query = Transactions.select()
-
-    if request.uid:
-        query = query.where(Transactions.charger_id == request.uid)
-
-    if request.filters:
-        for column, value in request.filters.items():
-            if not Transactions._meta.fields.get(column):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Column '{column}' not found in transactions table.",
-                )
-            query = query.where(getattr(Transactions, column) == value)
-
-    if request.start_time:
-        query = query.where(Transactions.start_time >= request.start_time)
-    if request.end_time:
-        query = query.where(Transactions.stop_time <= request.end_time)
-
-    if request.limit:
-        start, end = map(int, request.limit.split("-"))
-        query = query.order_by(Transactions.id).limit(end - start + 1).offset(start - 1)
-    else:
-        query = query.order_by(Transactions.id)
-
-    results = [model_to_dict(row) for row in query]
-    response_obj.headers["x-auth-sign"] = "70d8f676bc4e0192183f3fd7b1a71c90 ||| 9f4e9b4e81bd03dd7a06daeaf5c36123b80c3bcab2bd2a40d815ac223157f7c320db1adf20176482ee8b198003dc63ce"
-    return {"data": results}
-
-
-# Handle OPTIONS for /api/query_reservations
-@app.options("/api/query_reservations")
-async def options_query_reservations():
-    return JSONResponse(
-        content={},
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type, x-api-key, Access-Control-Allow-Origin",
-        },
-    )
-
-
-@app.post("/api/query_reservations")
-async def query_reservations(request: ChargerToCMSQueryRequest, response_obj: Response):
-    query = Reservation.select()
-
-    if request.uid:
-        query = query.where(Reservation.charger_id == request.uid)
-
-    if request.filters:
-        for column, value in request.filters.items():
-            if not Reservation._meta.fields.get(column):
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Column '{column}' not found in reservations table.",
-                )
-            query = query.where(getattr(Reservation, column) == value)
-
-    if request.start_time:
-        query = query.where(Reservation.reserved_at >= request.start_time)
-    if request.end_time:
-        query = query.where(Reservation.reserved_at <= request.end_time)
-
-    if request.limit:
-        start, end = map(int, request.limit.split("-"))
-        query = query.order_by(Reservation.id).limit(end - start + 1).offset(start - 1)
-    else:
-        query = query.order_by(Reservation.id)
-
-    results = [model_to_dict(row) for row in query]
-    response_obj.headers["x-auth-sign"] = "50bedff2f46bf1edec9ba8c9a10125e5 ||| 448bebb76d8a7a17fe6ff62bbadfc59e136ac78c8f4df3ac918d52b2dbb282889c7123336cfad6da69b374f9386d477a"
-    return {"data": results}
-
-
 def format_duration(seconds):
     """Convert seconds into a human-readable format: years, days, hours, minutes, seconds."""
     years, remainder = divmod(seconds, 31536000)  # 365 * 24 * 60 * 60
@@ -2164,53 +1859,6 @@ async def check_charger_inactivity(request: StatusRequest, response_obj: Respons
 
     response_obj.headers["x-auth-sign"] = "cf14e1b39d45fa052941bd79eaa13e06 ||| 3c79f80d1b0838ac28c258711c0b20d231c65118ee1be434bc0d1d71182451564dbf46fdd3b38386af76169e4fdbb9a4"
     return result
-
-
-@app.post("/api/wallet/create")
-async def create_wallet_for_user(user: UserIDRequest, response_obj: Response):
-    api_url = config("APICHARGERDATA")  # Load API URL from .env
-    apiauthkey = config("APIAUTHKEY")  # Load API Auth key from .env
-
-    # Call the wallet creation logic from wallet_methods.py using user_id from the request body
-    response_obj.headers["x-auth-sign"] = "e4455a817728fbe3e48241a88b94444c ||| c864e0606dac091ada84e9daaaa45362da4b4cf3f8f8e00c99c05b27f73c93517964e723ccf2b8dd40f860727c06e2a7"
-    return await create_wallet_route(api_url, apiauthkey, user.user_id)
-
-
-@app.post("/api/wallet/delete")
-async def delete_wallet_data(request: UserIDRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = "b4419195e6a02bd90fee123894de19ce ||| 84c5595bf063c83f6e16ab9416cc69eb541e40a7193337c56444faea999848aea9c83bad05b96281b9839f2f222f0ec8"
-    return await delete_wallet(request.user_id)
-
-
-@app.post("/api/wallet/recharge")
-async def recharge_wallet_route(request: RechargeWalletRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = "1dc21fd0daff176bc7a34d64da83d02f ||| d7f15c1c8c285cb19fbbe7989a7c7b2c4d5cf05135fd1dc2f311878722549f733388239aa31263f2b9100b4a0ab72302"
-    return await recharge_wallet(request.user_id, request.recharge_amount)
-
-
-@app.post("/api/wallet/edit")
-async def edit_wallet_route(request: EditWalletRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = "8248c223057e044579738ad6ea2e40d1 ||| 6ea00c1826d34d863974a44f59ac69f6490155da01d4d02da99a95b219ecd3a6bdc49fe3f03298082253ac98baa5e0a8"
-    return await edit_wallet(request.user_id, request.balance)
-
-
-@app.post("/api/wallet/debit")
-async def debit_wallet_route(request: DebitWalletRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = "0f9e5fac79e3c5de5040dec96028dcdf ||| 0cb000188757558244c14daef5d25447aa6d4577855b1e8b5a41762befa193c8652d7a273f58c2dac62b2d21f24144d0"
-    return await debit_wallet(request.user_id, request.debit_amount)
-
-
-@app.post("/api/wallet/recharge-history")
-async def get_recharge_history_route(request: UserIDRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = "52d4169a6ce5e536845d75cfe3c2a8e9 ||| 8b1ecd970ed6d810bf6edb4176c108c116cd7ad281d1561e0bbe5a8d1c680080c376e10b2cab2bd4c55dd6748ca32bb3"
-    return await get_wallet_recharge_history(request.user_id)
-
-
-@app.post("/api/wallet/transaction-history")
-async def get_transaction_history_route(request: UserIDRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = "2abb23f726a318e9a463fa5784e826c5 ||| d7b49e072e330047a10a63abf8a0dca4d7fde7052ce70da95111761074e2cb77add137a64a9b9347645accca825e7712"
-    return await get_wallet_transaction_history(request.user_id)
-
 
 if __name__ == "__main__":
     uvicorn.run(
