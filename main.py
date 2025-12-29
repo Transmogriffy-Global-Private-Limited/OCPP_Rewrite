@@ -29,15 +29,7 @@ from starlette.middleware.cors import CORSMiddleware
 import multiprocessing
 from dbconn import keep_db_alive
 from models import (
-    Analytics,
-    Reservation,
     db,
-)
-from models import (
-    OCPPMessageCharger as ChargerToCMS,
-)
-from models import (
-    OCPPMessageCMS as CMSToCharger,
 )
 from models import (
     Transaction as Transactions,
@@ -1272,39 +1264,16 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
                 connectors = charge_point.state["connectors"]
                 connectors_status = {}
 
-                for conn_id, conn_state in connectors.items():
-                    next_reservation = (
-                        Reservation.select()
-                        .where(
-                            Reservation.charger_id == cp_id,
-                            Reservation.connector_id == conn_id,
-                            Reservation.status == "Reserved",
-                        )
-                        .order_by(Reservation.expiry_date.asc())
-                        .dicts()
-                        .first()
-                    )
+                connectors_status[conn_id] = {
+                    "status": conn_state["status"],
+                    "latest_meter_value": conn_state.get("last_meter_value"),
+                    "latest_transaction_consumption_kwh": conn_state.get(
+                        "last_transaction_consumption_kwh", 0
+                    ),
+                    "error_code": conn_state.get("error_code", "NoError"),
+                    "latest_transaction_id": conn_state.get("transaction_id"),
 
-                    if next_reservation:
-                        next_reservation_info = {
-                            "reservation_id": next_reservation["reservation_id"],
-                            "connector_id": next_reservation["connector_id"],
-                            "from_time": next_reservation["from_time"],
-                            "to_time": next_reservation["to_time"],
-                        }
-                    else:
-                        next_reservation_info = None
-
-                    connectors_status[conn_id] = {
-                        "status": conn_state["status"],
-                        "latest_meter_value": conn_state.get("last_meter_value"),
-                        "latest_transaction_consumption_kwh": conn_state.get(
-                            "last_transaction_consumption_kwh", 0
-                        ),
-                        "error_code": conn_state.get("error_code", "NoError"),
-                        "latest_transaction_id": conn_state.get("transaction_id"),
-                        "next_reservation": next_reservation_info,
-                    }
+                }
 
                 all_online_statuses[cp_id] = {
                     "status": charge_point.state["status"],
@@ -1338,39 +1307,28 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
                 )
                 connectors = charge_point.state["connectors"]
 
-                for conn_id, conn_state in connectors.items():
-                    next_reservation = (
-                        Reservation.select()
-                        .where(
-                            Reservation.charger_id == charger_id,
-                            Reservation.connector_id == conn_id,
-                            Reservation.status == "Reserved",
-                        )
-                        .order_by(Reservation.expiry_date.asc())
-                        .dicts()
-                        .first()
-                    )
+                
 
-                    if next_reservation:
-                        next_reservation_info = {
-                            "reservation_id": next_reservation["reservation_id"],
-                            "connector_id": next_reservation["connector_id"],
-                            "from_time": next_reservation["from_time"],
-                            "to_time": next_reservation["to_time"],
-                        }
-                    else:
-                        next_reservation_info = None
 
-                    connectors_status[conn_id] = {
-                        "status": conn_state["status"],
-                        "last_meter_value": conn_state.get("last_meter_value"),
-                        "last_transaction_consumption_kwh": conn_state.get(
-                            "last_transaction_consumption_kwh", 0
-                        ),
-                        "error_code": conn_state.get("error_code", "NoError"),
-                        "transaction_id": conn_state.get("transaction_id"),
-                        "next_reservation": next_reservation_info,
-                    }
+
+
+
+
+
+                    
+               
+
+
+                connectors_status[conn_id] = {
+                    "status": conn_state["status"],
+                    "last_meter_value": conn_state.get("last_meter_value"),
+                    "last_transaction_consumption_kwh": conn_state.get(
+                        "last_transaction_consumption_kwh", 0
+                    ),
+                    "error_code": conn_state.get("error_code", "NoError"),
+                    "transaction_id": conn_state.get("transaction_id"),
+
+                }
 
             # If the charger is offline, use its last known data from charge_points
             elif charger_id in central_system.charge_points:
@@ -1416,39 +1374,25 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
         connectors = charge_point.state["connectors"]
         connectors_status = {}
 
-        for conn_id, conn_state in connectors.items():
-            next_reservation = (
-                Reservation.select()
-                .where(
-                    Reservation.charger_id == charge_point_id,
-                    Reservation.connector_id == conn_id,
-                    Reservation.status == "Reserved",
-                )
-                .order_by(Reservation.expiry_date.asc())
-                .dicts()
-                .first()
-            )
 
-            if next_reservation:
-                next_reservation_info = {
-                    "reservation_id": next_reservation["reservation_id"],
-                    "connector_id": next_reservation["connector_id"],
-                    "from_time": next_reservation["from_time"],
-                    "to_time": next_reservation["to_time"],
-                }
-            else:
-                next_reservation_info = None
 
-            connectors_status[conn_id] = {
-                "status": conn_state["status"],
-                "latest_meter_value": conn_state.get("last_meter_value"),
-                "latest_transaction_consumption_kwh": conn_state.get(
-                    "last_transaction_consumption_kwh", 0
-                ),
-                "error_code": conn_state.get("error_code", "NoError"),
-                "latest_transaction_id": conn_state.get("transaction_id"),
-                "next_reservation": next_reservation_info,
-            }
+
+
+
+
+
+
+
+        connectors_status[conn_id] = {
+            "status": conn_state["status"],
+            "latest_meter_value": conn_state.get("last_meter_value"),
+            "latest_transaction_consumption_kwh": conn_state.get(
+                "last_transaction_consumption_kwh", 0
+            ),
+            "error_code": conn_state.get("error_code", "NoError"),
+            "latest_transaction_id": conn_state.get("transaction_id"),
+
+        }
 
         return {
             "charger_id": charge_point_id,
@@ -1474,39 +1418,27 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
         connectors = charge_point.state["connectors"]
         connectors_status = {}
 
-        for conn_id, conn_state in connectors.items():
-            next_reservation = (
-                Reservation.select()
-                .where(
-                    Reservation.charger_id == charge_point_id,
-                    Reservation.connector_id == conn_id,
-                    Reservation.status == "Reserved",
-                )
-                .order_by(Reservation.expiry_date.asc())
-                .dicts()
-                .first()
-            )
+        
 
-            if next_reservation:
-                next_reservation_info = {
-                    "reservation_id": next_reservation["reservation_id"],
-                    "connector_id": next_reservation["connector_id"],
-                    "from_time": next_reservation["from_time"],
-                    "to_time": next_reservation["to_time"],
-                }
-            else:
-                next_reservation_info = None
 
-            connectors_status[conn_id] = {
-                "status": conn_state["status"],
-                "latest_meter_value": conn_state.get("last_meter_value"),
-                "latest_transaction_consumption_kwh": conn_state.get(
-                    "last_transaction_consumption_kwh", 0
-                ),
-                "error_code": conn_state.get("error_code", "NoError"),
-                "latest_transaction_id": conn_state.get("transaction_id"),
-                "next_reservation": next_reservation_info,
-            }
+
+
+
+
+
+
+
+
+        connectors_status[conn_id] = {
+            "status": conn_state["status"],
+            "latest_meter_value": conn_state.get("last_meter_value"),
+            "latest_transaction_consumption_kwh": conn_state.get(
+                "last_transaction_consumption_kwh", 0
+            ),
+            "error_code": conn_state.get("error_code", "NoError"),
+            "latest_transaction_id": conn_state.get("transaction_id"),
+
+        }
 
         return {
             "charger_id": charge_point_id,
@@ -1585,265 +1517,265 @@ def format_duration(seconds):
     return ", ".join(parts) if parts else "0 seconds"
 
 
-@app.post("/api/charger_analytics")
-async def charger_analytics(request: ChargerAnalyticsRequest, response_obj: Response):
-    # Query to get the earliest and latest timestamps from your data tables
-    min_max_time_query = ChargerToCMS.select(
-        fn.MIN(ChargerToCMS.timestamp).alias("min_time"),
-        fn.MAX(ChargerToCMS.timestamp).alias("max_time"),
-    ).first()
-    min_time = min_max_time_query.min_time
-    max_time = min_max_time_query.max_time
+# @app.post("/api/charger_analytics")
+# async def charger_analytics(request: ChargerAnalyticsRequest, response_obj: Response):
+#     # Query to get the earliest and latest timestamps from your data tables
+#     min_max_time_query = ChargerToCMS.select(
+#         fn.MIN(ChargerToCMS.timestamp).alias("min_time"),
+#         fn.MAX(ChargerToCMS.timestamp).alias("max_time"),
+#     ).first()
+#     min_time = min_max_time_query.min_time
+#     max_time = min_max_time_query.max_time
 
-    # Use the earliest and latest timestamps if not provided in the request
-    start_time = request.start_time or (
-        min_time
-        if min_time
-        else datetime.min.replace(tzinfo=timezone.utc, hour=0, minute=0, second=0, microsecond=0)
-    )
-    end_time = request.end_time or (
-        max_time
-        if max_time
-        else datetime.max.replace(tzinfo=timezone.utc, hour=23, minute=59, second=59, microsecond=0)
-    )
+#     # Use the earliest and latest timestamps if not provided in the request
+#     start_time = request.start_time or (
+#         min_time
+#         if min_time
+#         else datetime.min.replace(tzinfo=timezone.utc, hour=0, minute=0, second=0, microsecond=0)
+#     )
+#     end_time = request.end_time or (
+#         max_time
+#         if max_time
+#         else datetime.max.replace(tzinfo=timezone.utc, hour=23, minute=59, second=59, microsecond=0)
+#     )
 
-    # Initialize variables to store the results
-    analytics = {}
+#     # Initialize variables to store the results
+#     analytics = {}
 
-    # Initialize variables for cumulative logic
-    total_cumulative_uptime_seconds = 0
-    total_cumulative_transactions = 0
-    total_cumulative_electricity_used = 0
-    total_cumulative_time_occupied_seconds = 0
+#     # Initialize variables for cumulative logic
+#     total_cumulative_uptime_seconds = 0
+#     total_cumulative_transactions = 0
+#     total_cumulative_electricity_used = 0
+#     total_cumulative_time_occupied_seconds = 0
 
-    charger_ids = []
+#     charger_ids = []
 
-    # Step 1: Handle case when charger_id == "cumulative" (fetch all chargers for user)
-    if request.charger_id == "cumulative":
-        user_id = request.user_id  # Assuming user_id is passed in the body
+#     # Step 1: Handle case when charger_id == "cumulative" (fetch all chargers for user)
+#     if request.charger_id == "cumulative":
+#         user_id = request.user_id  # Assuming user_id is passed in the body
 
-        # API call to fetch the chargers for the specific user
-        api_url = config("APIUSERCHARGERDATA")  # API URL from the config
-        apiauthkey = config("APIAUTHKEY")  # API Auth key from config
+#         # API call to fetch the chargers for the specific user
+#         api_url = config("APIUSERCHARGERDATA")  # API URL from the config
+#         apiauthkey = config("APIAUTHKEY")  # API Auth key from config
 
-        # Post request to fetch user charger data
-        response = requests.post(
-            api_url,
-            headers={"apiauthkey": apiauthkey},
-            json={"get_user_id": user_id},
-            timeout=10,
-        )
+#         # Post request to fetch user charger data
+#         response = requests.post(
+#             api_url,
+#             headers={"apiauthkey": apiauthkey},
+#             json={"get_user_id": user_id},
+#             timeout=10,
+#         )
 
-        if response.status_code != 200:
-            return {"error": "Failed to fetch user charger data from external API"}
+#         if response.status_code != 200:
+#             return {"error": "Failed to fetch user charger data from external API"}
 
-        user_charger_data = response.json().get("user_chargerunit_details", [])
-        charger_ids = [charger["uid"] for charger in user_charger_data]
+#         user_charger_data = response.json().get("user_chargerunit_details", [])
+#         charger_ids = [charger["uid"] for charger in user_charger_data]
 
-        # If no chargers found for the user, return null values
-        if not charger_ids:
-            return {
-                "total_uptime": "0 seconds",
-                "total_transactions": 0,
-                "total_electricity_used_kwh": 0,
-                "message": "No chargers registered for this user.",
-            }
-    else:
-        # When a specific charger_id is provided, use that charger
-        charger_ids = [request.charger_id]  # For a single charger
+#         # If no chargers found for the user, return null values
+#         if not charger_ids:
+#             return {
+#                 "total_uptime": "0 seconds",
+#                 "total_transactions": 0,
+#                 "total_electricity_used_kwh": 0,
+#                 "message": "No chargers registered for this user.",
+#             }
+#     else:
+#         # When a specific charger_id is provided, use that charger
+#         charger_ids = [request.charger_id]  # For a single charger
 
-    # Step 2: Calculate the uptime for each charger in the list
-    for charger_id in charger_ids:
-        uptime_query = (
-            ChargerToCMS.select(ChargerToCMS.charger_id, ChargerToCMS.timestamp)
-            .where(
-                (ChargerToCMS.timestamp.between(start_time, end_time))
-                & (ChargerToCMS.charger_id == charger_id)
-            )
-            .order_by(ChargerToCMS.charger_id, ChargerToCMS.timestamp)
-        )
+#     # Step 2: Calculate the uptime for each charger in the list
+#     for charger_id in charger_ids:
+#         uptime_query = (
+#             ChargerToCMS.select(ChargerToCMS.charger_id, ChargerToCMS.timestamp)
+#             .where(
+#                 (ChargerToCMS.timestamp.between(start_time, end_time))
+#                 & (ChargerToCMS.charger_id == charger_id)
+#             )
+#             .order_by(ChargerToCMS.charger_id, ChargerToCMS.timestamp)
+#         )
 
-        uptime_results = list(uptime_query)
+#         uptime_results = list(uptime_query)
 
-        # If no data (messages) is found, set the uptime to zero for this charger and continue to the next
-        if not uptime_results:
-            analytics[charger_id] = {
-                "total_uptime": "0 seconds",
-                "uptime_percentage": 0,
-                "total_transactions": 0,
-                "total_electricity_used_kwh": 0,
-                "occupancy_rate_percentage": 0,
-                "average_session_duration": "0 seconds",
-                "peak_usage_times": "No data available",
-            }
-            continue  # Skip further processing for this charger
+#         # If no data (messages) is found, set the uptime to zero for this charger and continue to the next
+#         if not uptime_results:
+#             analytics[charger_id] = {
+#                 "total_uptime": "0 seconds",
+#                 "uptime_percentage": 0,
+#                 "total_transactions": 0,
+#                 "total_electricity_used_kwh": 0,
+#                 "occupancy_rate_percentage": 0,
+#                 "average_session_duration": "0 seconds",
+#                 "peak_usage_times": "No data available",
+#             }
+#             continue  # Skip further processing for this charger
 
-        # Initialize for each charger, ensuring no stale data is carried over
-        charger_uptime_data = {
-            "total_uptime_seconds": 0,
-            "total_possible_uptime_seconds": (end_time - start_time).total_seconds(),
-            "total_time_occupied_seconds": 0,  # Initialize to 0
-            "session_durations": [],
-            "peak_usage_times": [0] * 24,  # 24-hour time slots
-        }
+#         # Initialize for each charger, ensuring no stale data is carried over
+#         charger_uptime_data = {
+#             "total_uptime_seconds": 0,
+#             "total_possible_uptime_seconds": (end_time - start_time).total_seconds(),
+#             "total_time_occupied_seconds": 0,  # Initialize to 0
+#             "session_durations": [],
+#             "peak_usage_times": [0] * 24,  # 24-hour time slots
+#         }
 
-        previous_timestamp = None
-        first_message = None
+#         previous_timestamp = None
+#         first_message = None
 
-        for row in uptime_results:
-            charger_id, timestamp = row.charger_id, row.timestamp
+#         for row in uptime_results:
+#             charger_id, timestamp = row.charger_id, row.timestamp
 
-            if not first_message:
-                first_message = timestamp
+#             if not first_message:
+#                 first_message = timestamp
 
-            if previous_timestamp:
-                time_difference = (timestamp - previous_timestamp).total_seconds()
+#             if previous_timestamp:
+#                 time_difference = (timestamp - previous_timestamp).total_seconds()
 
-                if time_difference <= 30:
-                    # If the time difference is 30 seconds or less, accumulate the uptime
-                    charger_uptime_data["total_uptime_seconds"] += time_difference
-                else:
-                    # Charger was offline for more than 30 seconds, skip adding to uptime
-                    logging.info(
-                        f"Charger {charger_id} was offline for {time_difference - 30} seconds."
-                    )
+#                 if time_difference <= 30:
+#                     # If the time difference is 30 seconds or less, accumulate the uptime
+#                     charger_uptime_data["total_uptime_seconds"] += time_difference
+#                 else:
+#                     # Charger was offline for more than 30 seconds, skip adding to uptime
+#                     logging.info(
+#                         f"Charger {charger_id} was offline for {time_difference - 30} seconds."
+#                     )
 
-            # Update the previous timestamp for the next iteration
-            previous_timestamp = timestamp
+#             # Update the previous timestamp for the next iteration
+#             previous_timestamp = timestamp
 
-        # Step 3: Calculate total number of transactions, electricity used, and session-related metrics
-        transaction_summary_query = (
-            Transactions.select(
-                fn.COUNT(Transactions.id).alias("total_transactions"),
-                fn.SUM(Transactions.total_consumption).alias("total_electricity_used"),
-                fn.SUM(
-                    fn.TIMESTAMPDIFF(
-                        SQL("SECOND"),
-                        Transactions.start_time,
-                        Transactions.stop_time,
-                    )
-                ).alias("total_time_occupied"),
-            )
-            .where(
-                (Transactions.start_time.between(start_time, end_time))
-                & (Transactions.charger_id == charger_id)
-            )
-            .first()
-        )
+#         # Step 3: Calculate total number of transactions, electricity used, and session-related metrics
+#         transaction_summary_query = (
+#             Transactions.select(
+#                 fn.COUNT(Transactions.id).alias("total_transactions"),
+#                 fn.SUM(Transactions.total_consumption).alias("total_electricity_used"),
+#                 fn.SUM(
+#                     fn.TIMESTAMPDIFF(
+#                         SQL("SECOND"),
+#                         Transactions.start_time,
+#                         Transactions.stop_time,
+#                     )
+#                 ).alias("total_time_occupied"),
+#             )
+#             .where(
+#                 (Transactions.start_time.between(start_time, end_time))
+#                 & (Transactions.charger_id == charger_id)
+#             )
+#             .first()
+#         )
 
-        total_transactions = transaction_summary_query.total_transactions
-        total_electricity_used = transaction_summary_query.total_electricity_used or 0.0
-        total_time_occupied = (
-            transaction_summary_query.total_time_occupied or 0
-        )  # Ensure total_time_occupied is not None
+#         total_transactions = transaction_summary_query.total_transactions
+#         total_electricity_used = transaction_summary_query.total_electricity_used or 0.0
+#         total_time_occupied = (
+#             transaction_summary_query.total_time_occupied or 0
+#         )  # Ensure total_time_occupied is not None
 
-        # Add the current charger's metrics to the cumulative values (only if "cumulative" is requested)
-        if request.charger_id == "cumulative":
-            total_cumulative_uptime_seconds += charger_uptime_data[
-                "total_uptime_seconds"
-            ]
-            total_cumulative_transactions += total_transactions or 0
-            total_cumulative_electricity_used += total_electricity_used
-            total_cumulative_time_occupied_seconds += total_time_occupied or 0
+#         # Add the current charger's metrics to the cumulative values (only if "cumulative" is requested)
+#         if request.charger_id == "cumulative":
+#             total_cumulative_uptime_seconds += charger_uptime_data[
+#                 "total_uptime_seconds"
+#             ]
+#             total_cumulative_transactions += total_transactions or 0
+#             total_cumulative_electricity_used += total_electricity_used
+#             total_cumulative_time_occupied_seconds += total_time_occupied or 0
 
-        # Calculate session durations and peak usage times for each charger
-        session_query = Transactions.select(
-            Transactions.start_time,
-            fn.TIMESTAMPDIFF(
-                SQL("SECOND"), Transactions.start_time, Transactions.stop_time
-            ).alias("session_duration"),
-        ).where(
-            (Transactions.start_time.between(start_time, end_time))
-            & (Transactions.charger_id == charger_id)
-        )
+#         # Calculate session durations and peak usage times for each charger
+#         session_query = Transactions.select(
+#             Transactions.start_time,
+#             fn.TIMESTAMPDIFF(
+#                 SQL("SECOND"), Transactions.start_time, Transactions.stop_time
+#             ).alias("session_duration"),
+#         ).where(
+#             (Transactions.start_time.between(start_time, end_time))
+#             & (Transactions.charger_id == charger_id)
+#         )
 
-        sessions = list(session_query)
+#         sessions = list(session_query)
 
-        for session in sessions:
-            start_time = session.start_time
-            session_duration = session.session_duration
-            charger_uptime_data["session_durations"].append(session_duration)
-            hour_of_day = start_time.hour
-            charger_uptime_data["peak_usage_times"][hour_of_day] += 1
+#         for session in sessions:
+#             start_time = session.start_time
+#             session_duration = session.session_duration
+#             charger_uptime_data["session_durations"].append(session_duration)
+#             hour_of_day = start_time.hour
+#             charger_uptime_data["peak_usage_times"][hour_of_day] += 1
 
-        # Calculate peak usage hours
-        max_usage_count = max(charger_uptime_data["peak_usage_times"])
-        peak_usage_hours = [
-            f"{hour}:00 - {hour + 1}:00"
-            for hour, count in enumerate(charger_uptime_data["peak_usage_times"])
-            if count == max_usage_count
-        ]
+#         # Calculate peak usage hours
+#         max_usage_count = max(charger_uptime_data["peak_usage_times"])
+#         peak_usage_hours = [
+#             f"{hour}:00 - {hour + 1}:00"
+#             for hour, count in enumerate(charger_uptime_data["peak_usage_times"])
+#             if count == max_usage_count
+#         ]
 
-        if max_usage_count == 0:
-            peak_usage_hours = [
-                "No peak usage times - charger was not used during this period."
-            ]
+#         if max_usage_count == 0:
+#             peak_usage_hours = [
+#                 "No peak usage times - charger was not used during this period."
+#             ]
 
-        # Compile the results for this charger
-        uptime_seconds = charger_uptime_data["total_uptime_seconds"]
-        uptime_percentage = (
-            round(
-                (uptime_seconds / charger_uptime_data["total_possible_uptime_seconds"])
-                * 100,
-                3,
-            )
-            if uptime_seconds > 0
-            else 0
-        )
-        average_session_duration_seconds = (
-            sum(charger_uptime_data["session_durations"]) / total_transactions
-            if total_transactions > 0
-            else 0
-        )
-        occupancy_rate = (
-            round(
-                (
-                    total_time_occupied
-                    / charger_uptime_data["total_possible_uptime_seconds"]
-                )
-                * 100,
-                3,
-            )
-            if total_time_occupied > 0
-            else 0
-        )
+#         # Compile the results for this charger
+#         uptime_seconds = charger_uptime_data["total_uptime_seconds"]
+#         uptime_percentage = (
+#             round(
+#                 (uptime_seconds / charger_uptime_data["total_possible_uptime_seconds"])
+#                 * 100,
+#                 3,
+#             )
+#             if uptime_seconds > 0
+#             else 0
+#         )
+#         average_session_duration_seconds = (
+#             sum(charger_uptime_data["session_durations"]) / total_transactions
+#             if total_transactions > 0
+#             else 0
+#         )
+#         occupancy_rate = (
+#             round(
+#                 (
+#                     total_time_occupied
+#                     / charger_uptime_data["total_possible_uptime_seconds"]
+#                 )
+#                 * 100,
+#                 3,
+#             )
+#             if total_time_occupied > 0
+#             else 0
+#         )
 
-        analytics_data = {
-            "charger_id": charger_id,
-            "timestamp": CentralSystem.currdatetime(),
-            "total_uptime": format_duration(uptime_seconds),
-            "uptime_percentage": uptime_percentage,
-            "total_transactions": total_transactions,
-            "total_electricity_used_kwh": total_electricity_used,
-            "occupancy_rate_percentage": occupancy_rate,
-            "average_session_duration": format_duration(
-                average_session_duration_seconds
-            ),
-            "peak_usage_times": ", ".join(
-                peak_usage_hours
-            ),  # Store as a comma-separated string
-        }
+#         analytics_data = {
+#             "charger_id": charger_id,
+#             "timestamp": CentralSystem.currdatetime(),
+#             "total_uptime": format_duration(uptime_seconds),
+#             "uptime_percentage": uptime_percentage,
+#             "total_transactions": total_transactions,
+#             "total_electricity_used_kwh": total_electricity_used,
+#             "occupancy_rate_percentage": occupancy_rate,
+#             "average_session_duration": format_duration(
+#                 average_session_duration_seconds
+#             ),
+#             "peak_usage_times": ", ".join(
+#                 peak_usage_hours
+#             ),  # Store as a comma-separated string
+#         }
 
-        # Save analytics data to the database
-        Analytics.create(**analytics_data)
+#         # Save analytics data to the database
+#         Analytics.create(**analytics_data)
 
-        # Add the analytics data to the response
-        analytics[charger_id] = analytics_data
+#         # Add the analytics data to the response
+#         analytics[charger_id] = analytics_data
 
-    # Step 4: Return cumulative analytics if 'cumulative' is requested
-    if request.charger_id == "cumulative":
-        return {
-            "total_uptime": format_duration(total_cumulative_uptime_seconds),
-            "total_transactions": total_cumulative_transactions,
-            "total_electricity_used_kwh": total_cumulative_electricity_used,
-            "total_time_occupied": format_duration(
-                total_cumulative_time_occupied_seconds
-            ),
-        }
+#     # Step 4: Return cumulative analytics if 'cumulative' is requested
+#     if request.charger_id == "cumulative":
+#         return {
+#             "total_uptime": format_duration(total_cumulative_uptime_seconds),
+#             "total_transactions": total_cumulative_transactions,
+#             "total_electricity_used_kwh": total_cumulative_electricity_used,
+#             "total_time_occupied": format_duration(
+#                 total_cumulative_time_occupied_seconds
+#             ),
+#         }
 
-    # Step 5: Return individual charger analytics
-    response_obj.headers["x-auth-sign"] = "639010f6105f6a136a8bbfaf4967fe47 ||| f67927aa5805f975d80cf5ad32798c9442e3c251934a135ce6d4f1eaf8cc5a6d5b332ed4c830e09064e93842be2e846d"
-    return {"analytics": analytics}
+#     # Step 5: Return individual charger analytics
+#     response_obj.headers["x-auth-sign"] = "639010f6105f6a136a8bbfaf4967fe47 ||| f67927aa5805f975d80cf5ad32798c9442e3c251934a135ce6d4f1eaf8cc5a6d5b332ed4c830e09064e93842be2e846d"
+#     return {"analytics": analytics}
 
 
 @app.post("/api/check_charger_inactivity")
