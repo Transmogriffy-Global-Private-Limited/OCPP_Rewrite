@@ -883,7 +883,7 @@ async def hello():
     """
     A simple endpoint to check if the API is running.
     """
-    return {"message": "Helloo, this is the OCPP HAL API. It is running fine.\n x-auth-sign: `9de5394558b6457186d17e8d7c755faa ||| c94e655d2370a071915e837c72d5eaf4417ecf79b605b4dbadf16363c6fdd206b640ca1d990899372f69b4cfb03baeb5`"}
+    return {"message": "Helloo, this is the OCPP HAL API. It is running fine."}
 
 
 # Handle OPTIONS for /api/change_availability
@@ -912,7 +912,7 @@ async def change_availability(request: ChangeAvailabilityRequest, response_obj: 
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "58cfd340a103930ffc6ab9e9458da937 ||| e72b4ad028d01d0efff506d1f9b7abfc63b7e50b04d0d8a2414deee81abe1c6b865a500a70c227306305785202bd4010"
+
     return {"status": response.status}
 
 
@@ -942,7 +942,7 @@ async def start_transaction(request: StartTransactionRequest, response_obj: Resp
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "3bbfadec5f71ba88376480edb01611f7 ||| 6f332978e862738763dbcb969aa0f4b2a8ffd84a926c3a87e61312c16b937db48a0c0e5da0b91c786f5dfc70a7aa8936"
+
     return {"status": response.status}
 
 
@@ -1001,7 +1001,7 @@ async def stop_transaction(request: Request, response_obj: Response):
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
 
-    response_obj.headers["x-auth-sign"] = "9a3e77fbddecde2a7a70d338bec3e153 ||| 100b22d441b9f44ddd756ab37a6f71fc3fbd70cf9de25ce5a7b88e9b4f0e4443ad69a91796c4fb3b18b95a2faf1d893d"
+
     return {"status": response.status}
 
 
@@ -1031,7 +1031,7 @@ async def change_configuration(request: ChangeConfigurationRequest, response_obj
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "9a3cd3ba0264d2cdc1cc16c3ce349513 ||| a7290f47f85349d0c67a4b8ef61b77f8e0d766a22cd0ee00331a468a51810adcf899f3c88b52e8e23de71ba06e641b6e"
+
     return {"status": response.status}
 
 
@@ -1058,7 +1058,7 @@ async def clear_cache(request: GetConfigurationRequest, response_obj: Response):
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "c11041eb33e1c321b08e326cf7549329 ||| 663205571171c291d2a2a835939e1a8ccfb5e97adfbcc8ee5f3814a61fdb92f79ec25d35fdb18056495cf78e4083f132"
+
     return {"status": response.status}
 
 
@@ -1087,7 +1087,7 @@ async def unlock_connector(request: UnlockConnectorRequest, response_obj: Respon
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "295b919a3cf736194269eaffaaf224f1 ||| 1a2e67f0c18d3b57850b00077708fe1a4fad7b2ba5715de2ee2d0b1a7dcfea78fe5ec3d85abc915e1e5a1c1f8cee07e9"
+
     return {"status": response.status}
 
 
@@ -1120,7 +1120,7 @@ async def get_diagnostics(request: GetDiagnosticsRequest, response_obj: Response
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "13a603d36b356428a2587fc9da4595bb ||| 21dffa17bc1f04aff1d847c460a9ebafad129daaa2884e1c0672ea8c3067bb7e05ca0ccfef76b37b9ebbba3bce1ba224"
+
     return {"status": response.status}
 
 
@@ -1152,7 +1152,7 @@ async def update_firmware(request: UpdateFirmwareRequest, response_obj: Response
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "07529c97b04a9748c56c27f1f574322b ||| 4fa082011abe2055e6c6fb56aa6bae3c2d4dc341beb26ddec199f4752f713d08a3733ee7518a5bc7d0a9e1a17f1005df"
+
     return {"status": response.status}
 
 
@@ -1184,7 +1184,7 @@ async def reset(request: ResetRequest, response_obj: Response):
     )
     if isinstance(response, dict) and "error" in response:
         raise HTTPException(status_code=404, detail=response["error"])
-    response_obj.headers["x-auth-sign"] = "73e3ba1dc113f08b6e9a747e458ab71e ||| f0f858d61885699310ee5a27febb9d3b0b4c2c237e2c307331ca98e44942004b80f6dd397cb352aa6b2bca33e2941a0d"
+
     return {"status": response.status}
 
 
@@ -1230,7 +1230,7 @@ async def options_status():
 
 # @app.post("/api/status")
 # async def get_charge_point_status(request: StatusRequest, response_obj: Response):
-#     response_obj.headers["x-auth-sign"] = "1433d8be0fbfd759dfa0f89dc5b07cb5 ||| 17fbdfa25e10ec8774ba91b43431b882e9c43873db8b3495bf8805557bad58b706d47e2bb9ef08e90718e716e8a450f6"
+
 #     # Fetch the latest charger data from cache or API
 #     charger_data = await central_system.get_charger_data()
 
@@ -1450,156 +1450,156 @@ async def options_status():
 
 @app.post("/api/status")
 async def get_charge_point_status(request: StatusRequest, response_obj: Response):
-    response_obj.headers["x-auth-sign"] = (
-        "1433d8be0fbfd759dfa0f89dc5b07cb5 ||| "
-        "17fbdfa25e10ec8774ba91b43431b882e9c43873db8b3495bf8805557bad58b706d47e2bb9ef08e90718e716e8a450f6"
-    )
 
-    # Fetch the latest charger data from cache or API
-    charger_data = await central_system.get_charger_data()
+    try:
 
-    # Create a set of active charger IDs from the charger data (API/cache)
-    active_chargers = {f"{item['uid']}" for item in charger_data}
+        # Fetch the latest charger data from cache or API
+        charger_data = await central_system.get_charger_data()
 
-    uid = request.uid
+        # Create a set of active charger IDs from the charger data (API/cache)
+        active_chargers = {f"{item['uid']}" for item in charger_data}
 
-    # Handle specific chargers: enforce presence in API/cache
-    if uid not in ["all", "all_online"]:
-        if uid not in active_chargers:
-            raise HTTPException(status_code=404, detail="Charger not found in the system")
+        uid = request.uid
 
-    # ---- all_online: only show chargers that are online AND still present in API/cache ----
-    if uid == "all_online":
-        all_online_statuses = {}
+        # Handle specific chargers: enforce presence in API/cache
+        if uid not in ["all", "all_online"]:
+            if uid not in active_chargers:
+                raise HTTPException(status_code=404, detail="Charger not found in the system")
 
-        for cp_id, charge_point in central_system.charge_points.items():
-            if cp_id not in active_chargers:
-                continue
-            if not getattr(charge_point, "online", False):
-                continue
+        # ---- all_online: only show chargers that are online AND still present in API/cache ----
+        if uid == "all_online":
+            all_online_statuses = {}
 
-            online_status = "Online (with error)" if charge_point.has_error else "Online"
+            for cp_id, charge_point in central_system.charge_points.items():
+                if cp_id not in active_chargers:
+                    continue
+                if not getattr(charge_point, "online", False):
+                    continue
 
-            connectors = charge_point.state["connectors"]
-            connectors_status = {}
-
-            # ✅ FIX: loop so conn_id/conn_state exist
-            for conn_id, conn_state in connectors.items():
-                connectors_status[conn_id] = {
-                    "status": conn_state["status"],
-                    "latest_meter_value": conn_state.get("last_meter_value"),
-                    "latest_transaction_consumption_kwh": conn_state.get(
-                        "last_transaction_consumption_kwh", 0
-                    ),
-                    "error_code": conn_state.get("error_code", "NoError"),
-                    "latest_transaction_id": conn_state.get("transaction_id"),
-                }
-
-            all_online_statuses[cp_id] = {
-                "status": charge_point.state["status"],
-                "connectors": connectors_status,
-                "online": online_status,
-                "latest_message_received_time": charge_point.last_message_time.isoformat(),
-            }
-
-        return all_online_statuses
-
-    # ---- all: return all chargers (online/offline) present in API/cache ----
-    if uid == "all":
-        all_statuses = {}
-
-        for charger in charger_data:
-            charger_id = charger["uid"]
-            charge_point = central_system.charge_points.get(charger_id)
-
-            online_status = "Offline"  # default
-            connectors_status = {}
-
-            if charge_point:
-                online_status = (
-                    "Online (with error)"
-                    if charge_point.online and charge_point.has_error
-                    else "Online"
-                )
+                online_status = "Online (with error)" if charge_point.has_error else "Online"
 
                 connectors = charge_point.state["connectors"]
+                connectors_status = {}
 
                 # ✅ FIX: loop so conn_id/conn_state exist
                 for conn_id, conn_state in connectors.items():
                     connectors_status[conn_id] = {
                         "status": conn_state["status"],
-                        "last_meter_value": conn_state.get("last_meter_value"),
-                        "last_transaction_consumption_kwh": conn_state.get(
+                        "latest_meter_value": conn_state.get("last_meter_value"),
+                        "latest_transaction_consumption_kwh": conn_state.get(
                             "last_transaction_consumption_kwh", 0
                         ),
                         "error_code": conn_state.get("error_code", "NoError"),
-                        "transaction_id": conn_state.get("transaction_id"),
+                        "latest_transaction_id": conn_state.get("transaction_id"),
                     }
 
-            # (This branch in your old code is basically redundant, but keeping behavior-safe)
-            elif charger_id in central_system.charge_points:
-                charge_point = central_system.charge_points[charger_id]
-                online_status = "Offline"
-                connectors = charge_point.state["connectors"]
+                all_online_statuses[cp_id] = {
+                    "status": charge_point.state["status"],
+                    "connectors": connectors_status,
+                    "online": online_status,
+                    "latest_message_received_time": charge_point.last_message_time.isoformat(),
+                }
 
-                for conn_id, conn_state in connectors.items():
-                    connectors_status[conn_id] = {
-                        "status": conn_state["status"],
-                        "last_meter_value": conn_state.get("last_meter_value"),
-                        "last_transaction_consumption_kwh": conn_state.get(
-                            "last_transaction_consumption_kwh", 0
-                        ),
-                        "error_code": conn_state.get("error_code", "NoError"),
-                        "transaction_id": conn_state.get("transaction_id"),
-                    }
+            return all_online_statuses
 
-            all_statuses[charger_id] = {
-                "status": (charge_point.state["status"] if charge_point else "Offline"),
-                "connectors": connectors_status,
-                "online": online_status,
-                "last_message_received_time": (
-                    charge_point.last_message_time.isoformat() if charge_point else None
+        # ---- all: return all chargers (online/offline) present in API/cache ----
+        if uid == "all":
+            all_statuses = {}
+
+            for charger in charger_data:
+                charger_id = charger["uid"]
+                charge_point = central_system.charge_points.get(charger_id)
+
+                online_status = "Offline"  # default
+                connectors_status = {}
+
+                if charge_point:
+                    online_status = (
+                        "Online (with error)"
+                        if charge_point.online and charge_point.has_error
+                        else "Online"
+                    )
+
+                    connectors = charge_point.state["connectors"]
+
+                    # ✅ FIX: loop so conn_id/conn_state exist
+                    for conn_id, conn_state in connectors.items():
+                        connectors_status[conn_id] = {
+                            "status": conn_state["status"],
+                            "last_meter_value": conn_state.get("last_meter_value"),
+                            "last_transaction_consumption_kwh": conn_state.get(
+                                "last_transaction_consumption_kwh", 0
+                            ),
+                            "error_code": conn_state.get("error_code", "NoError"),
+                            "transaction_id": conn_state.get("transaction_id"),
+                        }
+
+                # (This branch in your old code is basically redundant, but keeping behavior-safe)
+                elif charger_id in central_system.charge_points:
+                    charge_point = central_system.charge_points[charger_id]
+                    online_status = "Offline"
+                    connectors = charge_point.state["connectors"]
+
+                    for conn_id, conn_state in connectors.items():
+                        connectors_status[conn_id] = {
+                            "status": conn_state["status"],
+                            "last_meter_value": conn_state.get("last_meter_value"),
+                            "last_transaction_consumption_kwh": conn_state.get(
+                                "last_transaction_consumption_kwh", 0
+                            ),
+                            "error_code": conn_state.get("error_code", "NoError"),
+                            "transaction_id": conn_state.get("transaction_id"),
+                        }
+
+                all_statuses[charger_id] = {
+                    "status": (charge_point.state["status"] if charge_point else "Offline"),
+                    "connectors": connectors_status,
+                    "online": online_status,
+                    "last_message_received_time": (
+                        charge_point.last_message_time.isoformat() if charge_point else None
+                    ),
+                }
+
+            return all_statuses
+
+        # ---- specific charger ----
+        charge_point_id = uid
+        charge_point = central_system.charge_points.get(charge_point_id)
+        if not charge_point:
+            raise HTTPException(status_code=404, detail="Charge point not found")
+
+        online_status = (
+            "Online (with error)"
+            if charge_point.online and charge_point.has_error
+            else "Online"
+            if charge_point.online
+            else "Offline"
+        )
+
+        connectors = charge_point.state["connectors"]
+        connectors_status = {}
+
+        # ✅ FIX: loop so conn_id/conn_state exist
+        for conn_id, conn_state in connectors.items():
+            connectors_status[conn_id] = {
+                "status": conn_state["status"],
+                "latest_meter_value": conn_state.get("last_meter_value"),
+                "latest_transaction_consumption_kwh": conn_state.get(
+                    "last_transaction_consumption_kwh", 0
                 ),
+                "error_code": conn_state.get("error_code", "NoError"),
+                "latest_transaction_id": conn_state.get("transaction_id"),
             }
 
-        return all_statuses
-
-    # ---- specific charger ----
-    charge_point_id = uid
-    charge_point = central_system.charge_points.get(charge_point_id)
-    if not charge_point:
-        raise HTTPException(status_code=404, detail="Charge point not found")
-
-    online_status = (
-        "Online (with error)"
-        if charge_point.online and charge_point.has_error
-        else "Online"
-        if charge_point.online
-        else "Offline"
-    )
-
-    connectors = charge_point.state["connectors"]
-    connectors_status = {}
-
-    # ✅ FIX: loop so conn_id/conn_state exist
-    for conn_id, conn_state in connectors.items():
-        connectors_status[conn_id] = {
-            "status": conn_state["status"],
-            "latest_meter_value": conn_state.get("last_meter_value"),
-            "latest_transaction_consumption_kwh": conn_state.get(
-                "last_transaction_consumption_kwh", 0
-            ),
-            "error_code": conn_state.get("error_code", "NoError"),
-            "latest_transaction_id": conn_state.get("transaction_id"),
+        return {
+            "charger_id": charge_point_id,
+            "status": charge_point.state["status"],
+            "connectors": connectors_status,
+            "online": online_status,
+            "latest_message_received_time": charge_point.last_message_time.isoformat(),
         }
-
-    return {
-        "charger_id": charge_point_id,
-        "status": charge_point.state["status"],
-        "connectors": connectors_status,
-        "online": online_status,
-        "latest_message_received_time": charge_point.last_message_time.isoformat(),
-    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 # Handle OPTIONS for /api/trigger_message
 @app.options("/api/trigger_message")
@@ -1642,7 +1642,7 @@ async def trigger_message(request: TriggerMessageRequest, response_obj: Response
         charge_point_id, requested_message
     )
 
-    response_obj.headers["x-auth-sign"] = "42361b8da509b97843f231761b86e143 ||| b442624f883ff0967929ea79258303f412081e7b4c02161a83bed8be7dd2c7de2d24314078c72a50a3084da3746f6f1e"
+
 
     return {"status": status, "latest_message": latest_message}
 
@@ -1926,7 +1926,7 @@ def format_duration(seconds):
 #         }
 
 #     # Step 5: Return individual charger analytics
-#     response_obj.headers["x-auth-sign"] = "639010f6105f6a136a8bbfaf4967fe47 ||| f67927aa5805f975d80cf5ad32798c9442e3c251934a135ce6d4f1eaf8cc5a6d5b332ed4c830e09064e93842be2e846d"
+
 #     return {"analytics": analytics}
 
 
@@ -1941,7 +1941,7 @@ async def check_charger_inactivity(request: StatusRequest, response_obj: Respons
     # Call the method to check inactivity and update the status if necessary
     result = await central_system.check_inactivity_and_update_status(charge_point_id)
 
-    response_obj.headers["x-auth-sign"] = "cf14e1b39d45fa052941bd79eaa13e06 ||| 3c79f80d1b0838ac28c258711c0b20d231c65118ee1be434bc0d1d71182451564dbf46fdd3b38386af76169e4fdbb9a4"
+
     return result
 
 if __name__ == "__main__":

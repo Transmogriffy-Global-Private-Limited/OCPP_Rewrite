@@ -87,11 +87,11 @@ class ChargePoint(CP):
         if transaction_id is not None:
             self.state["connectors"][connector_id]["transaction_id"] = transaction_id
 
-        # Check for errors
-        if error_code and error_code != "NoError":
-            self.has_error = True
-        else:
-            self.has_error = False
+       # Charger has error if ANY connector has a non-NoError code
+        self.has_error = any(
+            (c.get("error_code") and c.get("error_code") != "NoError")
+            for c in self.state["connectors"].values()
+        )
 
     def mark_as_online(self, has_error=False):
         self.online = True
@@ -100,12 +100,12 @@ class ChargePoint(CP):
 
     async def send(self, message):
         response = await super().send(message)
-        self.mark_as_online()  # Update the last message time on receiving a response
+          # Update the last message time on receiving a response
         return response
 
     async def start(self):
         await super().start()
-        self.mark_as_online()
+        
 
     def update_transaction_id(self, connector_id, transaction_id):
         if transaction_id is not None:
@@ -184,7 +184,7 @@ class ChargePoint(CP):
 
     @on("Authorize")
     async def on_authorize(self, **kwargs):
-        self.mark_as_online()
+        
         logging.debug(f"Received Authorize request with kwargs: {kwargs}")
         id_tag = kwargs.get("id_tag")
 
@@ -199,7 +199,7 @@ class ChargePoint(CP):
     async def on_boot_notification(self, **kwargs):
         try:
             logging.debug(f"Received BootNotification with kwargs: {kwargs}")
-            self.mark_as_online()
+            
             
             response = call_result.BootNotification(
                 current_time=self.currdatetime(), interval=900, status="Accepted"
@@ -211,7 +211,7 @@ class ChargePoint(CP):
     @on("Heartbeat")
     async def on_heartbeat(self, **kwargs):
         logging.debug(f"Received Heartbeat with kwargs: {kwargs}")
-        self.mark_as_online()
+        
         
         response = call_result.Heartbeat(current_time=self.currdatetime())
                 
@@ -244,7 +244,7 @@ class ChargePoint(CP):
 
     @on("StartTransaction")
     async def on_start_transaction(self, **kwargs):
-        self.mark_as_online()
+        
         logging.debug(f"Received StartTransaction with kwargs: {kwargs}")
         
         connector_id = kwargs.get("connector_id")
@@ -313,9 +313,9 @@ class ChargePoint(CP):
 
     @on("StopTransaction")
     async def on_stop_transaction(self, **kwargs):
-        self.mark_as_online()
+        
         logging.debug(f"Received StopTransaction with kwargs: {kwargs}")
-        self.mark_as_online()
+        
 
         connector_id = kwargs.get("connector_id")
         transaction_id = kwargs.get("transaction_id")
@@ -385,7 +385,7 @@ class ChargePoint(CP):
 
     @on("MeterValues")
     async def on_meter_values(self, **kwargs):
-        self.mark_as_online()
+        
         logging.debug(f"Received MeterValues with kwargs: {kwargs}")
         connector_id = kwargs.get("connector_id")
         transaction_id = kwargs.get("transaction_id")
@@ -506,7 +506,7 @@ class ChargePoint(CP):
     @on("DiagnosticsStatusNotification")
     async def on_diagnostics_status_notification(self, **kwargs):
         logging.debug(f"Received DiagnosticsStatusNotification with kwargs: {kwargs}")
-        self.mark_as_online()
+        
         
         response = call_result.DiagnosticsStatusNotification()
         return response
@@ -514,7 +514,7 @@ class ChargePoint(CP):
     @on("FirmwareStatusNotification")
     async def on_firmware_status_notification(self, **kwargs):
         logging.debug(f"Received FirmwareStatusNotification with kwargs: {kwargs}")
-        self.mark_as_online()
+        
         
         response = call_result.FirmwareStatusNotification()
         return response
@@ -530,7 +530,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"RemoteStartTransaction response: {response}")
 
         transaction_id = (
@@ -545,7 +545,7 @@ class ChargePoint(CP):
         request = call.RemoteStopTransaction(transaction_id=transaction_id)
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"RemoteStopTransaction response: {response}")
 
         connector_id = next(
@@ -571,7 +571,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"ChangeAvailability response: {response}")
 
         return response
@@ -584,7 +584,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"ChangeConfiguration response: {response}")
 
         return response
@@ -595,7 +595,7 @@ class ChargePoint(CP):
 
         try:
             response = await self.call(request)
-            self.mark_as_online()  # Mark as online when a response is received
+              # Mark as online when a response is received
             logging.debug(f"GetConfiguration response: {response}")
 
             # Log the types and values of the configuration keys in the response
@@ -622,7 +622,7 @@ class ChargePoint(CP):
         request = call.ClearCache()
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"ClearCache response: {response}")
 
         return response
@@ -634,7 +634,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"UnlockConnector response: {response}")
 
         return response
@@ -659,7 +659,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"GetDiagnostics response: {response}")
 
         return response
@@ -678,7 +678,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"UpdateFirmware response: {response}")
 
         return response
@@ -690,7 +690,7 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-        self.mark_as_online()  # Mark as online when a response is received
+          # Mark as online when a response is received
         logging.debug(f"Reset response: {response}")
 
         return response
