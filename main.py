@@ -1279,7 +1279,7 @@ async def options_status():
 #                     "status": charge_point.state["status"],
 #                     "connectors": connectors_status,
 #                     "online": online_status,
-#                     "latest_message_received_time": charge_point.last_message_time.isoformat(),
+#                     "latest_message_received_time": charge_point.last_message_time,
 #                 }
 #         return all_online_statuses
 
@@ -1352,7 +1352,7 @@ async def options_status():
 #                 "connectors": connectors_status,
 #                 "online": online_status,
 #                 "last_message_received_time": (
-#                     charge_point.last_message_time.isoformat() if charge_point else None
+#                     charge_point.last_message_time if charge_point else None
 #                 ),
 #             }
 
@@ -1399,7 +1399,7 @@ async def options_status():
 #             "status": charge_point.state["status"],
 #             "connectors": connectors_status,
 #             "online": online_status,
-#             "latest_message_received_time": charge_point.last_message_time.isoformat(),
+#             "latest_message_received_time": charge_point.last_message_time,
 #         }
 
 #     # Handle specific charge point status request (this block will handle only specific charge points, not "all")
@@ -1445,7 +1445,7 @@ async def options_status():
 #             "status": charge_point.state["status"],
 #             "connectors": connectors_status,
 #             "online": online_status,
-#             "latest_message_received_time": charge_point.last_message_time.isoformat(),
+#             "latest_message_received_time": charge_point.last_message_time,
 #         }
 
 @app.post("/api/status")
@@ -1497,7 +1497,7 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
                     "status": charge_point.state["status"],
                     "connectors": connectors_status,
                     "online": online_status,
-                    "latest_message_received_time": charge_point.last_message_time.isoformat(),
+                    "latest_message_received_time": charge_point.last_message_time,
                 }
 
             return all_online_statuses
@@ -1556,7 +1556,7 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
                     "connectors": connectors_status,
                     "online": online_status,
                     "last_message_received_time": (
-                        charge_point.last_message_time.isoformat() if charge_point else None
+                        charge_point.last_message_time if charge_point else None
                     ),
                 }
 
@@ -1605,7 +1605,7 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
             "status": charge_point.state["status"],
             "connectors": connectors_status,
             "online": online_status,
-            "latest_message_received_time": charge_point.last_message_time.isoformat(),
+            "latest_message_received_time": charge_point.last_message_time,
         }
     
     except HTTPException as e:
