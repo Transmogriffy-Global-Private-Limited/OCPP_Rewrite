@@ -1565,8 +1565,17 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
         # ---- specific charger ----
         charge_point_id = uid
         charge_point = central_system.charge_points.get(charge_point_id)
+        # if not charge_point:
+        #     raise HTTPException(status_code=404, detail="Charge point not found")
+
         if not charge_point:
-            raise HTTPException(status_code=404, detail="Charge point not found")
+            return {
+                "charger_id": charge_point_id,
+                "status": "Offline",
+                "connectors": {},
+                "online": "Offline",
+                "latest_message_received_time": None,
+            }
 
         online_status = (
             "Online (with error)"
