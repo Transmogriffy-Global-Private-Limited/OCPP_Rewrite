@@ -1598,8 +1598,13 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
             "online": online_status,
             "latest_message_received_time": charge_point.last_message_time.isoformat(),
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    
+    except HTTPException as e:
+    # Preserve original HTTP exceptions (404, 401, etc.)
+        raise e
+    # except Exception as e:
+    #     print(e)
+    #     raise HTTPException(status_code=500, detail=str(e)) from e
 
 # Handle OPTIONS for /api/trigger_message
 @app.options("/api/trigger_message")
