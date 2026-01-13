@@ -388,7 +388,7 @@ class ChargePoint(CP):
         
         logging.debug(f"Received MeterValues with kwargs: {kwargs}")
         connector_id = kwargs.get("connector_id")
-        transaction_id = kwargs.get("transaction_id")
+        transaction_id = int(kwargs.get("transaction_id"))
         print(f"Transaction ID whose Meter Values I recieved: {transaction_id}")
         meter_values = kwargs.get("meter_value", [])
         
@@ -397,7 +397,20 @@ class ChargePoint(CP):
             sampled_values = last_entry.get("sampled_value", [])
             print (f"Meter Values recieved: {sampled_values}")
             if sampled_values:
-                sv0 = sampled_values[0]
+                sv0 = None
+
+                for sv in sampled_values:
+                    meas = (sv.get("measurand") or "").lower()
+                    if meas == "energy.active.import.register":
+                        sv0 = sv
+                        break
+
+                if sv0 is None:
+                    logging.warning(
+                        f"No energy measurand in MeterValues for TX {transaction_id}, skipping"
+                    )
+                    return call_result.MeterValues()
+
                 try:
                     # raw numeric value
                     raw_value = float(sv0.get("value"))
@@ -443,6 +456,7 @@ class ChargePoint(CP):
                         f"[{self.charger_id}] Could not find Transaction row "
                         f"for live TX {transaction_id} on connector {connector_id}"
                     )
+                    raise
 
             try:
                 limit_kwh = max_energy_limits.get(int(transaction_id))
@@ -470,7 +484,7 @@ class ChargePoint(CP):
                             )
                             async def _remote_stop(tx_id: int):
                                 try:
-                                    resp = await self.call(call.RemoteStopTransaction(transaction_id=tx_id))
+                                    resp = await self.call(call.RemoteStopTransaction(transaction_id=int(tx_id)))
                                     logging.info("[🟢 RemoteStop ACK] TX %s: %s", tx_id, resp)
                                 except Exception as e:
                                     logging.error("Autocutoff failed for TX %s: %s", tx_id, e)
