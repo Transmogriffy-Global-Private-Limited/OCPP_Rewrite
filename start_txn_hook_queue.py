@@ -14,7 +14,11 @@ FATAL_FILE = "start_txn_fatal_queue.jsonl"
 # === CONFIG ===
 RETRY_BASE_INTERVAL = 30  # seconds
 MAX_RETRIES = 6
-HOOK_URL = "https://be.cms.ocpp.transev.site/users/checkstartresponse"
+MAIN_CMS_HOOK_URL = config(
+    "MAIN_CMS_START_TXN_HOOK_URL",
+    default="https://be.cms.ocpp.transev.site/users/checkstartresponse",
+)
+SINGLE_SESSION_HOOK_URL = config("SINGLE_SESSION_START_TXN_HOOK_URL", default=None)
 apiauthkey = config("APIAUTHKEY")
 
 # === STATE ===
@@ -70,9 +74,19 @@ async def try_post_hook(payload: Dict):
         safe_payload["transactionid"] = str(payload["transactionid"])
 
         # ── 2. POST it ───────────────────────────────────────────────
+        target_url = (
+            SINGLE_SESSION_HOOK_URL
+            if payload.get("is_single_session")
+            else MAIN_CMS_HOOK_URL
+        )
+
+        if not target_url:
+            log_fatal({"payload": payload}, "Missing target start hook URL")
+            return "fatal"
+
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                HOOK_URL, json=safe_payload, headers=headers, timeout=10
+                target_url, json=safe_payload, headers=headers, timeout=10
             )
 
         # ── 3. Handle HTTP errors ───────────────────────────────────
