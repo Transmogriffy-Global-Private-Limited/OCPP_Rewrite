@@ -7,6 +7,7 @@ from peewee import (
     FloatField,
     IntegerField,
     Model,
+    BooleanField
 )
 
 from dbconn import get_database
@@ -34,6 +35,7 @@ class Transaction(BaseModel):
     stop_time = DateTimeField(null=True)
     id_tag = CharField()
     transaction_id = IntegerField(unique=True, null=True)
+    is_single_session = BooleanField(default=False)
     
     class Meta:
         table_name = "transactions"

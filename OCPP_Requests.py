@@ -242,33 +242,71 @@ class ChargePoint(CP):
         raise RuntimeError("RNG exhausted after 100 attempts – improbable, but fatal.")
 
 
+    # @on("StartTransaction")
+    # async def on_start_transaction(self, **kwargs):
+    #     self.mark_as_online()
+    #     logging.debug(f"Received StartTransaction with kwargs: {kwargs}")
+        
+    #     connector_id = kwargs.get("connector_id")
+    #     id_tag = kwargs.get("id_tag")
+    #     meter_start = kwargs.get("meter_start")
+
+    #     transaction_id = self.generate_unique_transaction_id()
+    #     kwargs["transaction_id"] = transaction_id  # inject into everything downstream
+
+    #     print(f"Transaction ID assigned: {transaction_id}")
+
+    #     # Store the original request
+        
+    #     # Create DB transaction record
+    #     rows = (
+    #         Transaction
+    #         .update(
+    #             connector_id = connector_id,
+    #             meter_start  = meter_start,
+    #             start_time   = datetime.now(timezone.utc),
+    #             id_tag       = id_tag,
+    #         )
+    #         .where(
+    #             (Transaction.charger_id     == self.charger_id) &
+    #             (Transaction.transaction_id == transaction_id)
+    #         )
+    #         .execute()
+    #     )
     @on("StartTransaction")
     async def on_start_transaction(self, **kwargs):
         self.mark_as_online()
         logging.debug(f"Received StartTransaction with kwargs: {kwargs}")
-        
+
         connector_id = kwargs.get("connector_id")
         id_tag = kwargs.get("id_tag")
         meter_start = kwargs.get("meter_start")
 
+        pending_key = (self.charger_id, int(connector_id), id_tag)
+
+        from main import central_system
+
+        pending_meta = central_system.pending_start_transactions.pop(pending_key, None)
+        is_single_session = bool(
+            pending_meta and pending_meta.get("is_single_session", False)
+        )
+
         transaction_id = self.generate_unique_transaction_id()
-        kwargs["transaction_id"] = transaction_id  # inject into everything downstream
+        kwargs["transaction_id"] = transaction_id
 
         print(f"Transaction ID assigned: {transaction_id}")
 
-        # Store the original request
-        
-        # Create DB transaction record
         rows = (
             Transaction
             .update(
-                connector_id = connector_id,
-                meter_start  = meter_start,
-                start_time   = datetime.now(timezone.utc),
-                id_tag       = id_tag,
+                connector_id=connector_id,
+                meter_start=meter_start,
+                start_time=datetime.now(timezone.utc),
+                id_tag=id_tag,
+                is_single_session=is_single_session,
             )
             .where(
-                (Transaction.charger_id     == self.charger_id) &
+                (Transaction.charger_id == self.charger_id) &
                 (Transaction.transaction_id == transaction_id)
             )
             .execute()
@@ -303,7 +341,8 @@ class ChargePoint(CP):
         "transactionid": int(transaction_id),
         "userid": id_tag,
         "chargerid": self.charger_id,
-        "connectorid": str(connector_id)
+        "connectorid": str(connector_id),
+        "is_single_session": is_single_session,
         })
 
         # Log ACK to CMS DB

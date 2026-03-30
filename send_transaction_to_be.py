@@ -15,7 +15,14 @@ FATAL_FILE = "fatal_queue.jsonl"
 # Constants
 RETRY_BASE_INTERVAL = 60  # seconds
 MAX_RETRIES = 10
-BACKEND_URL = "https://be.cms.ocpp.transev.site/users/deductcalculate"
+MAIN_CMS_BACKEND_URL = config(
+    "MAIN_CMS_COMPLETED_TXN_URL",
+    default="https://be.cms.ocpp.transev.site/users/deductcalculate",
+)
+SINGLE_SESSION_BACKEND_URL = config(
+    "SINGLE_SESSION_COMPLETED_TXN_URL",
+    default=None,
+)
 apiauthkey = config("APIAUTHKEY")
 
 # Worker state
@@ -80,6 +87,15 @@ def serialize_transaction(tx: Transaction) -> Dict:
 async def try_post(uuiddb: str):
     try:
         tx = Transaction.get(Transaction.uuiddb == uuiddb)
+        target_url = (
+            SINGLE_SESSION_BACKEND_URL
+            if tx.is_single_session
+            else MAIN_CMS_BACKEND_URL
+        )
+
+        if not target_url:
+            log_fatal({"uuiddb": uuiddb}, "Missing target completed-transaction URL")
+            return "fatal"
 
         # Fatal: bad/missing data
         if tx.stop_time is None:
@@ -101,7 +117,7 @@ async def try_post(uuiddb: str):
         headers = {"apiauthkey": apiauthkey}
 
         async with httpx.AsyncClient() as client:
-            resp = await client.post(BACKEND_URL, json=data, headers=headers, timeout=10)
+            resp = await client.post(target_url, json=data, headers=headers, timeout=10)
 
         if resp.status_code >= 500:
             raise Exception(f"[Send Completed Transaction Callback Hook]:\n Server error: {resp.status_code}\n{resp.text}")

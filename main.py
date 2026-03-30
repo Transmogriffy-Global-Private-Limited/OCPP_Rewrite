@@ -777,6 +777,7 @@ class StartTransactionRequest(BaseModel):
     uid: str
     id_tag: str
     connector_id: int
+    is_single_session: bool = False
 
 
 class StopTransactionRequest(BaseModel):
@@ -929,10 +930,29 @@ async def options_start_transaction():
         },
     )
 
+# @app.post("/api/start_transaction")
+# async def start_transaction(request: StartTransactionRequest, response_obj: Response):
+#     charge_point_id = request.uid
+
+#     response = await central_system.send_request(
+#         charge_point_id=charge_point_id,
+#         request_method="remote_start_transaction",
+#         id_tag=request.id_tag,
+#         connector_id=request.connector_id,
+#     )
+#     if isinstance(response, dict) and "error" in response:
+#         raise HTTPException(status_code=404, detail=response["error"])
+#     response_obj.headers["x-auth-sign"] = "3bbfadec5f71ba88376480edb01611f7 ||| 6f332978e862738763dbcb969aa0f4b2a8ffd84a926c3a87e61312c16b937db48a0c0e5da0b91c786f5dfc70a7aa8936"
+#     return {"status": response.status}
 
 @app.post("/api/start_transaction")
 async def start_transaction(request: StartTransactionRequest, response_obj: Response):
     charge_point_id = request.uid
+    pending_key = (request.uid, int(request.connector_id), request.id_tag)
+
+    central_system.pending_start_transactions[pending_key] = {
+        "is_single_session": request.is_single_session,
+    }
 
     response = await central_system.send_request(
         charge_point_id=charge_point_id,
@@ -940,8 +960,14 @@ async def start_transaction(request: StartTransactionRequest, response_obj: Resp
         id_tag=request.id_tag,
         connector_id=request.connector_id,
     )
+
     if isinstance(response, dict) and "error" in response:
+        central_system.pending_start_transactions.pop(pending_key, None)
         raise HTTPException(status_code=404, detail=response["error"])
+
+    if getattr(response, "status", None) != "Accepted":
+        central_system.pending_start_transactions.pop(pending_key, None)
+
     response_obj.headers["x-auth-sign"] = "3bbfadec5f71ba88376480edb01611f7 ||| 6f332978e862738763dbcb969aa0f4b2a8ffd84a926c3a87e61312c16b937db48a0c0e5da0b91c786f5dfc70a7aa8936"
     return {"status": response.status}
 
