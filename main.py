@@ -57,9 +57,7 @@ class VerifyAPIKeyMiddleware(BaseHTTPMiddleware):
             if request.url.path.startswith("/api/") and request.url.path != "/api/hello":
                 api_key = request.headers.get("x-api-key")
                 expected_api_key = config("API_KEY")
-                logging.info(
-                    f"Received API Key: {api_key}, Expected API Key: {expected_api_key}"
-                )
+                logging.info("API key check performed for protected API route")
                 if api_key != expected_api_key:
                     raise HTTPException(status_code=403, detail="Invalid API key")
         response = await call_next(request)
