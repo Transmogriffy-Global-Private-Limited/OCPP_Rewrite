@@ -546,11 +546,8 @@ class CentralSystem:
         if cp.last_message_time is None:
             return  # never heard from it yet
 
-        now = datetime.now(timezone.utc)
-        last_message_time = cp.last_message_time
-        if isinstance(last_message_time, str):
-            last_message_time = datetime.fromisoformat(last_message_time.replace("Z", "+00:00"))
-        delta = (now - last_message_time).total_seconds()
+        now   = datetime.now(timezone.utc)
+        delta = (now - cp.last_message_time).total_seconds()
 
         if delta < self.INACTIVITY_LIMIT or not cp.online:
             return  # still fine or already offline
@@ -1547,8 +1544,6 @@ async def get_charge_point_status(request: StatusRequest, response_obj: Response
                         "Online (with error)"
                         if charge_point.online and charge_point.has_error
                         else "Online"
-                        if charge_point.online
-                        else "Offline"
                     )
 
                     connectors = charge_point.state["connectors"]

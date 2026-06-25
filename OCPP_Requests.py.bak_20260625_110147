@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 import asyncio
 from ocpp.routing import on
 from ocpp.v16 import ChargePoint as CP
@@ -20,7 +20,9 @@ class ChargePoint(CP):
         self.state = {"status": "Inactive", "connectors": {}}
         self.online = False  # Track if the charger is online
         self.has_error = False  # Track if the charger has an error
-        self.last_message_time = self.utc_now()  # Timestamp of the last received message
+        self.last_message_time = (
+            self.currdatetime()
+        )  # Timestamp of the last received message
 
     def currdatetime(self):
         return datetime.now(timezone.utc).isoformat()
@@ -61,17 +63,23 @@ class ChargePoint(CP):
         if status:
             self.state["connectors"][connector_id]["status"] = status
         if meter_value is not None:
-            initial_meter_value = self.state["connectors"][connector_id]["last_meter_value"]
-            if initial_meter_value is not None and meter_value is not None:
-                consumption_kwh = (
-                    self.delta_wh(curr=float(meter_value), prev=float(initial_meter_value))
-                ) / 1000.0  # Convert Wh to kWh
-                self.state["connectors"][connector_id][
-                    "last_transaction_consumption_kwh"
-                ] = consumption_kwh
-                logging.info(
-                    f"Connector {connector_id} latest meter delta {consumption_kwh:.3f} kWh."
-                )
+            if (
+                self.state["connectors"][connector_id]["transaction_id"]
+                != transaction_id
+            ):
+                initial_meter_value = self.state["connectors"][connector_id][
+                    "last_meter_value"
+                ]
+                if initial_meter_value and meter_value:
+                    consumption_kwh = (
+                        self.delta_wh(curr = float(meter_value), prev= float(initial_meter_value))
+                    ) / 1000.0  # Convert Wh to kWh
+                    self.state["connectors"][connector_id][
+                        "last_transaction_consumption_kwh"
+                    ] = consumption_kwh
+                    logging.info(
+                        f"Connector {connector_id} last transaction consumed {consumption_kwh:.3f} kWh."
+                    )
             self.state["connectors"][connector_id]["last_meter_value"] = meter_value
             self.state["connectors"][connector_id]["last_meter_received"] = self.currdatetime()
         if error_code:
@@ -85,24 +93,19 @@ class ChargePoint(CP):
             for c in self.state["connectors"].values()
         )
 
-    def touch(self):
+    def mark_as_online(self, has_error=False):
         self.online = True
         self.last_message_time = datetime.now(timezone.utc)
-
-    def mark_as_online(self, has_error=None):
-        self.touch()
-        if has_error is not None:
-            self.has_error = has_error
+        self.has_error = has_error
 
     async def send(self, message):
         response = await super().send(message)
-        self.touch()
+          # Update the last message time on receiving a response
         return response
 
     async def start(self):
         await super().start()
-        self.touch()
-
+        
 
     def update_transaction_id(self, connector_id, transaction_id):
         if transaction_id is not None:
@@ -156,7 +159,7 @@ class ChargePoint(CP):
         ):
         """Retry RemoteStop + Unlock until success or timeout."""
         delay = 2
-        deadline = self.utc_now() + timedelta(seconds=max_total_time)
+        deadline = self.utc_now() + max_total_time
 
         while self.utc_now() < deadline:
             try:
@@ -181,7 +184,6 @@ class ChargePoint(CP):
 
     @on("Authorize")
     async def on_authorize(self, **kwargs):
-        self.touch()
         
         logging.debug(f"Received Authorize request with kwargs: {kwargs}")
         id_tag = kwargs.get("id_tag")
@@ -195,7 +197,6 @@ class ChargePoint(CP):
 
     @on("BootNotification")
     async def on_boot_notification(self, **kwargs):
-        self.touch()
         try:
             logging.debug(f"Received BootNotification with kwargs: {kwargs}")
             
@@ -209,7 +210,6 @@ class ChargePoint(CP):
 
     @on("Heartbeat")
     async def on_heartbeat(self, **kwargs):
-        self.touch()
         logging.debug(f"Received Heartbeat with kwargs: {kwargs}")
         
         
@@ -217,34 +217,29 @@ class ChargePoint(CP):
                 
         return response
 
-    def create_transaction_record(
-        self,
-        connector_id,
-        meter_start,
-        id_tag,
-        is_single_session: bool = False,
-        max_attempts: int = 100,
-    ) -> Transaction:
-        """Create the transaction row atomically with all required fields."""
-        connector_id = int(connector_id)
-        meter_start = float(meter_start)
-
+    def generate_unique_transaction_id(self, max_attempts: int = 100) -> int:
+        """
+        Grab a 32-bit random int, immediately INSERT it to reserve ownership.
+        If another CP raced us, the UNIQUE constraint raises IntegrityError
+        and we retry with a new number.
+        """
         for _ in range(max_attempts):
             tid = random.randint(1, 2_147_483_647)
+
             try:
-                return Transaction.create(
+                # Write first, ask questions later → race-proof
+                Transaction.create(
                     charger_id=self.charger_id,
-                    connector_id=connector_id,
-                    meter_start=meter_start,
-                    start_time=datetime.now(timezone.utc),
-                    id_tag=id_tag,
                     transaction_id=tid,
-                    is_single_session=is_single_session,
+                    id_tag="__RESERVED__",               # temp placeholder
+                    start_time=datetime.now(timezone.utc)
                 )
-            except IntegrityError:
+                return tid                               # we own it 🎉
+
+            except IntegrityError:                       # duplicate hit
                 continue
 
-        raise RuntimeError("Could not allocate a unique transaction id after 100 attempts.")
+        raise RuntimeError("RNG exhausted after 100 attempts – improbable, but fatal.")
 
 
     # @on("StartTransaction")
@@ -280,7 +275,6 @@ class ChargePoint(CP):
     #     )
     @on("StartTransaction")
     async def on_start_transaction(self, **kwargs):
-        self.touch()
         
         logging.debug(f"Received StartTransaction with kwargs: {kwargs}")
 
@@ -297,16 +291,34 @@ class ChargePoint(CP):
             pending_meta and pending_meta.get("is_single_session", False)
         )
 
-        transaction_record = self.create_transaction_record(
-            connector_id=connector_id,
-            meter_start=meter_start,
-            id_tag=id_tag,
-            is_single_session=is_single_session,
-        )
-        transaction_id = transaction_record.transaction_id
+        transaction_id = self.generate_unique_transaction_id()
         kwargs["transaction_id"] = transaction_id
 
         print(f"Transaction ID assigned: {transaction_id}")
+
+        rows = (
+            Transaction
+            .update(
+                connector_id=connector_id,
+                meter_start=meter_start,
+                start_time=datetime.now(timezone.utc),
+                id_tag=id_tag,
+                is_single_session=is_single_session,
+            )
+            .where(
+                (Transaction.charger_id == self.charger_id) &
+                (Transaction.transaction_id == transaction_id)
+            )
+            .execute()
+        )
+
+        if not rows:
+            raise RuntimeError(f"TX {transaction_id} vanished before update")
+
+        transaction_record = Transaction.get(
+        (Transaction.charger_id     == self.charger_id) &
+        (Transaction.transaction_id == transaction_id)
+    )
 
         self.update_transaction_id(connector_id, transaction_id)
         self.state["connectors"][connector_id]["transaction_record_id"] = transaction_record.id
@@ -340,7 +352,6 @@ class ChargePoint(CP):
 
     @on("StopTransaction")
     async def on_stop_transaction(self, **kwargs):
-        self.touch()
         
         logging.debug(f"Received StopTransaction with kwargs: {kwargs}")
         
@@ -413,15 +424,10 @@ class ChargePoint(CP):
 
     @on("MeterValues")
     async def on_meter_values(self, **kwargs):
-        self.touch()
         
         logging.debug(f"Received MeterValues with kwargs: {kwargs}")
         connector_id = kwargs.get("connector_id")
-        raw_transaction_id = kwargs.get("transaction_id")
-        if raw_transaction_id is None:
-            logging.warning(f"MeterValues without transaction_id from {self.charger_id}; acknowledging without session update")
-            return call_result.MeterValues()
-        transaction_id = int(raw_transaction_id)
+        transaction_id = int(kwargs.get("transaction_id"))
         print(f"Transaction ID whose Meter Values I recieved: {transaction_id}")
         meter_values = kwargs.get("meter_value", [])
         
@@ -518,7 +524,6 @@ class ChargePoint(CP):
                             async def _remote_stop(tx_id: int):
                                 try:
                                     resp = await self.call(call.RemoteStopTransaction(transaction_id=int(tx_id)))
-                                    self.touch()
                                     logging.info("[🟢 RemoteStop ACK] TX %s: %s", tx_id, resp)
                                 except Exception as e:
                                     logging.error("Autocutoff failed for TX %s: %s", tx_id, e)
@@ -534,10 +539,9 @@ class ChargePoint(CP):
 
     @on("StatusNotification")
     async def on_status_notification(self, **kwargs):
-        self.touch()
         logging.debug(f"Received StatusNotification with kwargs: {kwargs}")
         error_code = kwargs.get("error_code", "NoError")
-        self.has_error = error_code != "NoError"
+        self.mark_as_online(has_error=(error_code != 'NoError'))
         connector_id = kwargs.get("connector_id")
         status = kwargs.get("status")
         transaction_id = kwargs.get("transaction_id")
@@ -554,7 +558,6 @@ class ChargePoint(CP):
 
     @on("DiagnosticsStatusNotification")
     async def on_diagnostics_status_notification(self, **kwargs):
-        self.touch()
         logging.debug(f"Received DiagnosticsStatusNotification with kwargs: {kwargs}")
         
         
@@ -563,7 +566,6 @@ class ChargePoint(CP):
 
     @on("FirmwareStatusNotification")
     async def on_firmware_status_notification(self, **kwargs):
-        self.touch()
         logging.debug(f"Received FirmwareStatusNotification with kwargs: {kwargs}")
         
         
@@ -581,8 +583,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"RemoteStartTransaction response: {response}")
 
@@ -598,8 +598,6 @@ class ChargePoint(CP):
         request = call.RemoteStopTransaction(transaction_id=transaction_id)
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"RemoteStopTransaction response: {response}")
 
@@ -612,8 +610,7 @@ class ChargePoint(CP):
             None,
         )
         if connector_id:
-            self.state["connectors"][connector_id]["transaction_id"] = None
-            self.state["connectors"][connector_id].pop("transaction_record_id", None)
+            self.update_connector_state(connector_id, transaction_id=None)
 
         return response
 
@@ -627,8 +624,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"ChangeAvailability response: {response}")
 
@@ -642,8 +637,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"ChangeConfiguration response: {response}")
 
@@ -655,7 +648,6 @@ class ChargePoint(CP):
 
         try:
             response = await self.call(request)
-            self.touch()
               # Mark as online when a response is received
             logging.debug(f"GetConfiguration response: {response}")
 
@@ -683,8 +675,6 @@ class ChargePoint(CP):
         request = call.ClearCache()
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"ClearCache response: {response}")
 
@@ -697,8 +687,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"UnlockConnector response: {response}")
 
@@ -724,8 +712,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"GetDiagnostics response: {response}")
 
@@ -745,8 +731,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"UpdateFirmware response: {response}")
 
@@ -759,8 +743,6 @@ class ChargePoint(CP):
         )
 
         response = await self.call(request)
-
-        self.touch()
           # Mark as online when a response is received
         logging.debug(f"Reset response: {response}")
 
@@ -769,5 +751,4 @@ class ChargePoint(CP):
     async def trigger_message(self, requested_message):
         request = call.TriggerMessage(requested_message=requested_message)
         response = await self.call(request)
-        self.touch()
         return response
