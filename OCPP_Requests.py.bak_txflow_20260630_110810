@@ -400,7 +400,6 @@ class ChargePoint(CP):
 
         self.state["connectors"][connector_id]["transaction_id"] = None
         self.state["connectors"][connector_id].pop("transaction_record_id", None)
-        self.state["connectors"][connector_id].pop("stop_requested", None)
 
         wd = self.state["connectors"][connector_id].pop("watchdog_task", None)
         if wd and not wd.done():
@@ -513,30 +512,19 @@ class ChargePoint(CP):
                         )
 
                         if consumed_kwh >= (limit_kwh - 0.05):  # small buffer
-                            connector_state = self.state["connectors"].setdefault(connector_id, {})
+                            print(
+                                f"[⚡️ CUTOFF] TX {transaction_id} exceeded limit — triggering RemoteStop"
+                            )
+                            async def _remote_stop(tx_id: int):
+                                try:
+                                    resp = await self.call(call.RemoteStopTransaction(transaction_id=int(tx_id)))
+                                    self.touch()
+                                    logging.info("[🟢 RemoteStop ACK] TX %s: %s", tx_id, resp)
+                                except Exception as e:
+                                    logging.error("Autocutoff failed for TX %s: %s", tx_id, e)
 
-                            if connector_state.get("stop_requested"):
-                                logging.info(
-                                    "[⏳ CUTOFF] TX %s already has RemoteStop pending; not sending again",
-                                    transaction_id,
-                                )
-                            else:
-                                connector_state["stop_requested"] = True
-                                print(
-                                    f"[⚡️ CUTOFF] TX {transaction_id} exceeded limit — triggering RemoteStop"
-                                )
-
-                                async def _remote_stop(tx_id: int):
-                                    try:
-                                        resp = await self.remote_stop_transaction(int(tx_id))
-                                        self.touch()
-                                        logging.info("[🟢 RemoteStop ACK] TX %s: %s", tx_id, resp)
-                                    except Exception as e:
-                                        connector_state["stop_requested"] = False
-                                        logging.error("Autocutoff failed for TX %s: %s", tx_id, e)
-
-                                # schedule and *do not await*
-                                asyncio.create_task(_remote_stop(transaction_id))
+                            # schedule and *do not await*
+                            asyncio.create_task(_remote_stop(transaction_id))
             except Exception as e:
                 logging.error(f"Limit enforcement failed for TX {transaction_id}: {e}")
 
@@ -606,41 +594,26 @@ class ChargePoint(CP):
         return response
 
     async def remote_stop_transaction(self, transaction_id):
-        transaction_id = int(transaction_id)
         logging.debug(f"Sending RemoteStopTransaction: transaction_id {transaction_id}")
+        request = call.RemoteStopTransaction(transaction_id=transaction_id)
+
+        response = await self.call(request)
+
+        self.touch()
+          # Mark as online when a response is received
+        logging.debug(f"RemoteStopTransaction response: {response}")
 
         connector_id = next(
             (
                 k
                 for k, v in self.state["connectors"].items()
-                if v.get("transaction_id") is not None
-                and int(v.get("transaction_id")) == transaction_id
+                if v["transaction_id"] == transaction_id
             ),
             None,
         )
-
-        connector_state = None
-        if connector_id is not None:
-            connector_state = self.state["connectors"][connector_id]
-            connector_state["stop_requested"] = True
-
-        request = call.RemoteStopTransaction(transaction_id=transaction_id)
-
-        try:
-            response = await self.call(request)
-        except Exception:
-            if connector_state is not None:
-                connector_state["stop_requested"] = False
-            raise
-
-        self.touch()
-        logging.debug(f"RemoteStopTransaction response: {response}")
-
-        # RemoteStopTransaction ACK is only command acknowledgement.
-        # Actual charging completion is the charger StopTransaction event.
-        # Do NOT clear transaction_id or transaction_record_id here.
-        if connector_state is not None and getattr(response, "status", None) not in {"Accepted", "Success"}:
-            connector_state["stop_requested"] = False
+        if connector_id:
+            self.state["connectors"][connector_id]["transaction_id"] = None
+            self.state["connectors"][connector_id].pop("transaction_record_id", None)
 
         return response
 
